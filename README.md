@@ -308,18 +308,13 @@ build; dependency ranges can resolve differently in a later consumer install.
 ## Release prerequisites
 
 `.github/workflows/release.yml` publishes only from a published GitHub Release
-whose tag exactly matches `v<package version>`. It deliberately fails before
-publication until an authorized maintainer:
+whose tag exactly matches `v<package version>`. The official repository pins
+the package identity to `@xhinliang/awsl`, uses the `release.yml` npm trusted
+publisher, and has immutable releases enabled.
 
-- owns the `@xhinliang/awsl` package and keeps the manifest and release gate
-  pinned to that identity;
-- configures that npm package's trusted publisher for `release.yml` with the
-  `npm publish` action allowed; and
-- enables repository release immutability or equivalent tag rules and completes
-  the required licensing and organizational open-source approval.
-
-The release job uses GitHub OIDC and npm provenance. It contains no long-lived
-npm publication token.
+Before each release, an authorized maintainer must confirm the required
+licensing and organizational open-source approval. The release job uses GitHub
+OIDC and npm provenance. It contains no long-lived npm publication token.
 
 ## License
 
