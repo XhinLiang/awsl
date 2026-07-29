@@ -237,9 +237,23 @@ function hasExactRequiredKeys(
   );
 }
 
+function includesObjectType(type: unknown): boolean {
+  return (
+    type === "object" ||
+    (Array.isArray(type) && type.some((entry) => entry === "object"))
+  );
+}
+
 function closeCodexRequiredFields(schema: unknown): boolean {
   if (!isSchemaRecord(schema)) return false;
   let changed = false;
+  if (
+    includesObjectType(schema.type) &&
+    schema.additionalProperties !== false
+  ) {
+    schema.additionalProperties = false;
+    changed = true;
+  }
   const properties = schema.properties;
   if (isSchemaRecord(properties)) {
     const propertyKeys = Object.keys(properties);
