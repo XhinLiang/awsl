@@ -267,7 +267,7 @@ describe("CLI workflow execution", () => {
     expect(await readFile(log, "utf8")).toBe("version\nrun\n");
   });
 
-  test("routes a named Codex agent to its native TOML policy", async () => {
+  test("routes a named Codex agent to its native TOML policy on Codex CLI 0.146.0", async () => {
     const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-cli-run-")));
     const codexHome = join(cwd, "codex-home");
     const claudeConfigDir = join(cwd, "claude-config");
@@ -322,16 +322,25 @@ describe("CLI workflow execution", () => {
       AWSL_CODEX_COMMAND: fakeCodex,
       AWSL_FAKE_CODEX_LOG: log,
       AWSL_FAKE_CODEX_CAPTURE: capture,
+      AWSL_FAKE_CODEX_VERSION: "0.146.0",
       CODEX_HOME: codexHome,
       CLAUDE_CONFIG_DIR: claudeConfigDir,
     };
     const cli = cliContext(cwd, env);
-    expect(
-      await executeCli(
-        ["run", workflow, "--provider", "codex", "--format", "jsonl"],
-        cli.context,
-      ),
-    ).toBe(0);
+    const previousVersion = process.env.AWSL_FAKE_CODEX_VERSION;
+    process.env.AWSL_FAKE_CODEX_VERSION = "0.146.0";
+    try {
+      expect(
+        await executeCli(
+          ["run", workflow, "--provider", "codex", "--format", "jsonl"],
+          cli.context,
+        ),
+      ).toBe(0);
+    } finally {
+      if (previousVersion === undefined)
+        process.env.AWSL_FAKE_CODEX_VERSION = undefined;
+      else process.env.AWSL_FAKE_CODEX_VERSION = previousVersion;
+    }
 
     const events = cli
       .output()

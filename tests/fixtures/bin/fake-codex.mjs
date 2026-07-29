@@ -9,7 +9,9 @@ const log = async (kind) => {
 
 if (process.argv.slice(2).includes("--version")) {
   await log("version");
-  process.stdout.write("codex-cli 0.145.0\n");
+  process.stdout.write(
+    `codex-cli ${process.env.AWSL_FAKE_CODEX_VERSION ?? "0.145.0"}\n`,
+  );
   process.exit(0);
 }
 

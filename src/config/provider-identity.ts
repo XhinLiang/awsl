@@ -277,7 +277,7 @@ export function validateNormalizedProviderVersion(
   value: unknown,
 ): string {
   if (
-    (provider === "codex" && value === "0.145.0") ||
+    (provider === "codex" && (value === "0.145.0" || value === "0.146.0")) ||
     (provider === "claude" && value === "2.1.218")
   )
     return value;
@@ -289,6 +289,7 @@ export function normalizeProviderVersionBanner(
   value: string,
 ): string {
   if (provider === "codex" && value === "codex-cli 0.145.0") return "0.145.0";
+  if (provider === "codex" && value === "codex-cli 0.146.0") return "0.146.0";
   if (provider === "claude" && value === "2.1.218 (Claude Code)")
     return "2.1.218";
   return compatibilityError(provider, "provider version is incompatible");
