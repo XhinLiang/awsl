@@ -29,6 +29,7 @@ export interface RawAgentDefinition {
   disallowedTools?: readonly string[];
   mcp?: Readonly<Record<string, JsonValue>>;
   permissionMode?: string;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
   skills?: readonly string[];
   source: AgentDefinitionSource;
 }
@@ -58,15 +59,17 @@ function nonemptyString(value: unknown, field: string): string {
     fail(`agent ${field} must be a nonempty NUL-free string`);
   return value;
 }
-function freeze<T>(value: T): T {
+export function freezeAgentDefinition<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     for (const child of Object.values(value as Record<string, unknown>))
-      freeze(child);
+      freezeAgentDefinition(child);
     Object.freeze(value);
   }
   return value;
 }
-function snapshotSource(value: unknown): AgentDefinitionSource {
+export function snapshotAgentDefinitionSource(
+  value: unknown,
+): AgentDefinitionSource {
   if (!value || typeof value !== "object" || utilTypes.isProxy(value))
     fail("agent source must be exact immutable data");
   try {
@@ -92,7 +95,7 @@ function snapshotSource(value: unknown): AgentDefinitionSource {
       actual.identifier === "workflow-subagent" &&
       actual.realpath === null
     )
-      return freeze({
+      return freezeAgentDefinition({
         tier: "builtin",
         identifier: "workflow-subagent",
         realpath: null,
@@ -108,7 +111,7 @@ function snapshotSource(value: unknown): AgentDefinitionSource {
       actual.realpath &&
       !actual.realpath.includes("\0")
     )
-      return freeze({
+      return freezeAgentDefinition({
         tier: actual.tier,
         realpath: actual.realpath,
         sha256: hash as `sha256:${string}`,
@@ -139,7 +142,7 @@ function tokens(value: unknown, field: string): readonly string[] {
       fail(`agent ${field} entries must be unique nonempty strings`);
     result.push(token);
   }
-  return freeze(result);
+  return freezeAgentDefinition(result);
 }
 function jsonClone(value: unknown): JsonValue {
   if (value === null || typeof value === "string" || typeof value === "boolean")
@@ -148,7 +151,7 @@ function jsonClone(value: unknown): JsonValue {
     return Number.isFinite(value)
       ? value
       : fail("agent mcpServers must be JSON data");
-  if (Array.isArray(value)) return freeze(value.map(jsonClone));
+  if (Array.isArray(value)) return freezeAgentDefinition(value.map(jsonClone));
   if (!value || typeof value !== "object" || utilTypes.isProxy(value))
     fail("agent mcpServers must be a JSON object");
   const proto = Object.getPrototypeOf(value);
@@ -162,14 +165,14 @@ function jsonClone(value: unknown): JsonValue {
       writable: false,
       configurable: false,
     });
-  return freeze(result);
+  return freezeAgentDefinition(result);
 }
 
 export function parseAgentDefinition(
   markdown: string,
   source: AgentDefinitionSource,
 ): RawAgentDefinition {
-  const sourceSnapshot = snapshotSource(source);
+  const sourceSnapshot = snapshotAgentDefinitionSource(source);
   if (
     typeof markdown !== "string" ||
     Buffer.byteLength(markdown, "utf8") > MAX_DOCUMENT_BYTES
@@ -276,7 +279,7 @@ export function parseAgentDefinition(
       new Set(fields.skills).size !== fields.skills.length
     )
       fail("agent skills must be unique nonempty strings");
-    result.skills = freeze([...fields.skills] as string[]);
+    result.skills = freezeAgentDefinition([...fields.skills] as string[]);
   }
   if (fields.mcpServers !== undefined) {
     if (
@@ -289,5 +292,5 @@ export function parseAgentDefinition(
       Record<string, JsonValue>
     >;
   }
-  return freeze(result);
+  return freezeAgentDefinition(result);
 }
