@@ -120,6 +120,51 @@ describe("native routing fingerprint input and ABI", () => {
     await expect(nativeRoutingFingerprint(value.input)).resolves.toBe(expected);
   });
 
+  test("uses the verified Codex version namespace and separates 0.146.0 from the 0.145.0 ABI", async () => {
+    const value = await fixture();
+    const version = "0.146.0";
+    const namespace = `codex-cli@${version}`;
+    const expected = sha256([
+      "awsl-native-routing:v1",
+      ["provider", "codex", version],
+      [
+        "layer",
+        `${namespace}/config:base/v1`,
+        join(value.homeDir, ".codex", "config.toml"),
+        "missing",
+        null,
+        null,
+      ],
+      [
+        "layer",
+        `${namespace}/config:project/v1`,
+        join(value.projectRoot, ".codex", "config.toml"),
+        "missing",
+        null,
+        null,
+      ],
+      [
+        "environment",
+        `${namespace}/env/v1`,
+        [
+          ["OPENAI_BASE_URL", "missing", null],
+          ["OPENAI_ORGANIZATION", "missing", null],
+          ["OPENAI_PROJECT", "missing", null],
+        ],
+      ],
+      ["safe-args", `${namespace}/args/v1`, []],
+      ["profile", `${namespace}/profile/v1`, null],
+    ]);
+
+    const oldFingerprint = await nativeRoutingFingerprint(value.input);
+    const newFingerprint = await nativeRoutingFingerprint({
+      ...value.input,
+      providerVersion: version,
+    });
+    expect(newFingerprint).toBe(expected);
+    expect(newFingerprint).not.toBe(oldFingerprint);
+  });
+
   test("locks the Claude all-missing layer ABI and fixed order", async () => {
     const value = await fixture("claude");
     const environment = [
@@ -184,7 +229,7 @@ describe("native routing fingerprint input and ABI", () => {
     await expect(
       nativeRoutingFingerprint({
         ...value.input,
-        providerVersion: "0.146.0",
+        providerVersion: "0.147.0",
       }),
     ).rejects.toMatchObject({ code: "COMPATIBILITY_ERROR" });
     await expect(

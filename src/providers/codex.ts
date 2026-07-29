@@ -24,7 +24,7 @@ import {
 import {
   type PreparedProviderJsonSchema,
   createPrivateJsonFile,
-  prepareProviderJsonSchema,
+  prepareCodexJsonSchema,
 } from "./schema.js";
 
 export const CODEX_CAPABILITIES: ProviderCapabilities = Object.freeze({
@@ -40,6 +40,11 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = Object.freeze({
     denyAll: false,
   }),
   permissionModes: Object.freeze([]),
+  sandboxModes: Object.freeze([
+    "read-only",
+    "workspace-write",
+    "danger-full-access",
+  ] as const),
   skills: false,
   structuredAttemptEvents: false,
   resolvedModelEvents: false,
@@ -50,7 +55,12 @@ export interface CodexArgvOptions {
   profile?: string;
   model?: string;
   effort?: AgentEffort;
+  sandboxMode?: NegotiatedAgentPolicy["sandboxMode"];
 }
+
+const CODEX_SANDBOX_MODES = new Set<
+  NonNullable<NegotiatedAgentPolicy["sandboxMode"]>
+>(["read-only", "workspace-write", "danger-full-access"]);
 
 export function buildCodexArgv(
   options: CodexArgvOptions,
@@ -72,6 +82,13 @@ export function buildCodexArgv(
   }
   if (options.effort !== undefined) {
     argv.push("-c", `model_reasoning_effort="${options.effort}"`);
+  }
+  if (options.sandboxMode !== undefined) {
+    if (!CODEX_SANDBOX_MODES.has(options.sandboxMode))
+      throw compatibilityError(
+        "Codex does not support the requested sandbox mode",
+      );
+    argv.push("--sandbox", options.sandboxMode);
   }
   argv.push("exec", "--json");
   if (schemaPath !== undefined) {
@@ -171,7 +188,25 @@ function validateAgentPolicy(
       "Codex cannot preserve the named-agent permission mode",
     );
   }
-  return Object.freeze({ instructions, name });
+  let sandboxMode: NegotiatedAgentPolicy["sandboxMode"];
+  if (Object.hasOwn(agent, "sandboxMode")) {
+    const rawSandboxMode = agent.sandboxMode;
+    if (
+      typeof rawSandboxMode !== "string" ||
+      !CODEX_SANDBOX_MODES.has(
+        rawSandboxMode as NonNullable<NegotiatedAgentPolicy["sandboxMode"]>,
+      )
+    )
+      throw compatibilityError("Codex agent sandbox mode is invalid");
+    sandboxMode = rawSandboxMode as NonNullable<
+      NegotiatedAgentPolicy["sandboxMode"]
+    >;
+  }
+  return Object.freeze({
+    instructions,
+    name,
+    ...(sandboxMode === undefined ? {} : { sandboxMode }),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -566,9 +601,8 @@ export class CodexAdapter implements ProviderAdapter {
       | undefined;
 
     if (request.schema !== undefined) {
-      const preparedSchema = prepareProviderJsonSchema(request.schema, {
+      const preparedSchema = prepareCodexJsonSchema(request.schema, {
         label: "structured output schema",
-        provider: "codex",
       });
       schema = preparedSchema;
       try {
@@ -598,6 +632,7 @@ export class CodexAdapter implements ProviderAdapter {
             profile: this.#profile,
             effort: request.effort,
             model: request.model,
+            sandboxMode: agent?.sandboxMode,
           },
           schemaArtifact?.path,
         ),

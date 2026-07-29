@@ -41,6 +41,11 @@ export interface ProviderCapabilities {
     denyAll: boolean;
   };
   permissionModes: readonly string[];
+  sandboxModes: readonly (
+    | "read-only"
+    | "workspace-write"
+    | "danger-full-access"
+  )[];
   skills: false;
   structuredAttemptEvents: boolean;
   resolvedModelEvents: boolean;
@@ -74,6 +79,7 @@ export interface NegotiatedAgentPolicy {
   readonly disallowedTools?: readonly string[];
   readonly mcp?: Readonly<Record<string, JsonValue>>;
   readonly permissionMode?: string;
+  readonly sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
 }
 
 export interface ResolvedAgentSelection {

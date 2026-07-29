@@ -508,6 +508,7 @@ export async function nativeRoutingFingerprint(
   const environmentProjection = projectedEnvironment(environment, provider);
 
   if (provider === "codex") {
+    const namespace = `codex-cli@${providerVersion}`;
     const codexHome = locatorRoot(
       environment,
       "CODEX_HOME",
@@ -516,7 +517,7 @@ export async function nativeRoutingFingerprint(
     );
     const layers: LayerProjection[] = [
       await codexLayer(
-        "codex-cli@0.145.0/config:base/v1",
+        `${namespace}/config:base/v1`,
         lexicalPath(join(codexHome, "config.toml"), cwd),
         cwd,
       ),
@@ -524,14 +525,14 @@ export async function nativeRoutingFingerprint(
     if (profile !== undefined)
       layers.push(
         await codexLayer(
-          "codex-cli@0.145.0/config:profile/v1",
+          `${namespace}/config:profile/v1`,
           lexicalPath(join(codexHome, `${profile}.config.toml`), cwd),
           cwd,
         ),
       );
     layers.push(
       await codexLayer(
-        "codex-cli@0.145.0/config:project/v1",
+        `${namespace}/config:project/v1`,
         lexicalPath(join(projectRoot, ".codex", "config.toml"), cwd),
         cwd,
       ),
@@ -540,9 +541,9 @@ export async function nativeRoutingFingerprint(
       "awsl-native-routing:v1",
       ["provider", provider, providerVersion],
       ...layers,
-      ["environment", "codex-cli@0.145.0/env/v1", environmentProjection],
-      ["safe-args", "codex-cli@0.145.0/args/v1", safeArgs],
-      ["profile", "codex-cli@0.145.0/profile/v1", profile ?? null],
+      ["environment", `${namespace}/env/v1`, environmentProjection],
+      ["safe-args", `${namespace}/args/v1`, safeArgs],
+      ["profile", `${namespace}/profile/v1`, profile ?? null],
     ]);
   }
 

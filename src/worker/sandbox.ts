@@ -129,6 +129,43 @@ export async function executeSandbox(
   const aborted = new Promise<never>((_, reject) => {
     abortReject = reject;
   });
+  const watchdogMs = options.watchdogMs ?? 30_000;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  let rejectWatchdog!: (error: unknown) => void;
+  let externalRequests = 0;
+  let watchdogFinished = false;
+  let watchdogGeneration = 0;
+  const watchdog = new Promise<never>((_, reject) => {
+    rejectWatchdog = reject;
+  });
+  const clearWatchdog = () => {
+    watchdogGeneration += 1;
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = undefined;
+  };
+  const armWatchdog = () => {
+    clearWatchdog();
+    if (watchdogFinished || externalRequests > 0) return;
+    const generation = watchdogGeneration;
+    watchdogTimer = setTimeout(() => {
+      if (
+        generation !== watchdogGeneration ||
+        watchdogFinished ||
+        externalRequests > 0
+      )
+        return;
+      watchdogTimer = undefined;
+      rejectWatchdog(new Error("workflow wall-clock watchdog exceeded"));
+    }, watchdogMs);
+  };
+  const beginExternalRequest = () => {
+    externalRequests += 1;
+    clearWatchdog();
+  };
+  const endExternalRequest = () => {
+    externalRequests -= 1;
+    if (externalRequests === 0) armWatchdog();
+  };
   const abort = () => {
     for (const timer of timers) clearTimeout(timer);
     timers.clear();
@@ -164,16 +201,21 @@ export async function executeSandbox(
       method: "agent" | "workflow" | "phase" | "log",
       params: string,
     ) => {
+      const external = method === "agent" || method === "workflow";
       try {
         if (options.signal.aborted) throw new RunAbortError();
-        const response = await Promise.race([
-          method === "agent" || method === "workflow"
-            ? notificationTail.then(() =>
-                options.request(method, JSON.parse(params)),
-              )
-            : options.request(method, JSON.parse(params)),
-          aborted,
-        ]);
+        const parsed = JSON.parse(params);
+        const request = external
+          ? notificationTail.then(async () => {
+              beginExternalRequest();
+              try {
+                return await options.request(method, parsed);
+              } finally {
+                endExternalRequest();
+              }
+            })
+          : options.request(method, parsed);
+        const response = await Promise.race([request, aborted]);
         if (response.budget !== undefined) {
           Object.assign(budget, response.budget);
           options.onBudget?.({ ...budget });
@@ -453,13 +495,7 @@ export async function executeSandbox(
     const result = new vm.Script(options.code, {
       filename: options.filename,
     }).runInContext(context, { timeout: options.scriptTimeoutMs ?? 30_000 });
-    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
-    const watchdog = new Promise<never>((_, reject) => {
-      watchdogTimer = setTimeout(
-        () => reject(new Error("workflow wall-clock watchdog exceeded")),
-        options.watchdogMs ?? 30_000,
-      );
-    });
+    armWatchdog();
     try {
       const value = await Promise.race([
         Promise.resolve(result),
@@ -470,7 +506,8 @@ export async function executeSandbox(
       await Promise.race([notificationTail, aborted, watchdog, timerFailed]);
       return jsonClone(value);
     } finally {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogFinished = true;
+      clearWatchdog();
     }
   } catch (error) {
     throw workflowError(error);

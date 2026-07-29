@@ -24,10 +24,14 @@ const rawFields = new Set([
   "disallowedTools",
   "mcp",
   "permissionMode",
+  "sandboxMode",
   "skills",
   "source",
 ]);
 const efforts = new Set<AgentEffort>(["low", "medium", "high", "xhigh", "max"]);
+const codexSandboxModes = new Set<
+  NonNullable<RawAgentDefinition["sandboxMode"]>
+>(["read-only", "workspace-write", "danger-full-access"]);
 
 function fail(provider: ProviderId, message: string): never {
   throw new AwslError("COMPATIBILITY_ERROR", message, {
@@ -159,6 +163,7 @@ function snapshotRaw(
     "initialPrompt",
     "model",
     "permissionMode",
+    "sandboxMode",
   ])
     if (Object.hasOwn(raw, field))
       stringValue(raw[field], provider, "agent definition is not normalized");
@@ -221,6 +226,7 @@ export function negotiateAgent(
     disallowedTools?: readonly string[];
     mcp?: Readonly<Record<string, JsonValue>>;
     permissionMode?: string;
+    sandboxMode?: NonNullable<RawAgentDefinition["sandboxMode"]>;
   } = {
     name: raw.name as string,
     instructions: raw.instructions as string,
@@ -234,7 +240,29 @@ export function negotiateAgent(
       Object.hasOwn(raw, "permissionMode")
     )
       return fail(provider, "Codex cannot preserve explicit agent policy");
+    if (Object.hasOwn(raw, "sandboxMode")) {
+      const sandboxMode = raw.sandboxMode;
+      if (
+        typeof sandboxMode !== "string" ||
+        !codexSandboxModes.has(
+          sandboxMode as NonNullable<RawAgentDefinition["sandboxMode"]>,
+        ) ||
+        !Array.isArray(supported.sandboxModes) ||
+        !supported.sandboxModes.includes(
+          sandboxMode as NonNullable<RawAgentDefinition["sandboxMode"]>,
+        )
+      )
+        return fail(
+          provider,
+          "Codex cannot preserve the requested sandbox mode",
+        );
+      policy.sandboxMode = sandboxMode as NonNullable<
+        RawAgentDefinition["sandboxMode"]
+      >;
+    }
   } else {
+    if (Object.hasOwn(raw, "sandboxMode"))
+      return fail(provider, "Claude cannot preserve a Codex sandbox mode");
     const toolCapabilities = snapshotRecord(
       supported.tools,
       provider,

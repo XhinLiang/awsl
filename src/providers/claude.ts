@@ -14,7 +14,11 @@ import type {
   ProviderUsage,
 } from "../core/types.js";
 import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
-import { runProviderProcess } from "./process.js";
+import {
+  type ProviderProcessResult,
+  type RunProviderProcessOptions,
+  runProviderProcess,
+} from "./process.js";
 import {
   type PreparedProviderJsonSchema,
   type PrivateJsonFile,
@@ -48,6 +52,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = Object.freeze({
     denyAll: true,
   }),
   permissionModes: CLAUDE_PERMISSION_MODES,
+  sandboxModes: Object.freeze([]),
   skills: false,
   structuredAttemptEvents: true,
   resolvedModelEvents: true,
@@ -196,6 +201,8 @@ function snapshotAgentPolicy(
   const skills = agent.skills;
   if (skillsPresent && (!Array.isArray(skills) || skills.length !== 0))
     throw compatibilityError("Claude cannot preserve agent skills");
+  if (Object.hasOwn(agent, "sandboxMode"))
+    throw compatibilityError("Claude cannot preserve a Codex sandbox mode");
 
   const policy: {
     name: string;
@@ -687,9 +694,14 @@ class ClaudeStreamState {
   }
 }
 
+export type ClaudeProcessRunner = (
+  options: RunProviderProcessOptions,
+) => Promise<ProviderProcessResult>;
+
 export interface ClaudeAdapterOptions {
   identity: ProviderIdentity;
   configuredArgs?: readonly string[];
+  processRunner?: ClaudeProcessRunner;
 }
 
 export class ClaudeAdapter implements ProviderAdapter {
@@ -697,17 +709,31 @@ export class ClaudeAdapter implements ProviderAdapter {
   readonly capabilities = CLAUDE_CAPABILITIES;
   readonly identity: ProviderIdentity;
   readonly #configuredArgs: readonly string[];
+  readonly #processRunner: ClaudeProcessRunner;
 
   constructor(options: ClaudeAdapterOptions) {
     const snapshot = snapshotAdapterOptions(options, "claude", [
       "identity",
       "configuredArgs",
+      "processRunner",
     ]);
     this.identity = snapshotProviderIdentity(snapshot.identity, "claude");
     this.#configuredArgs = validateProviderArgs(
       "claude",
       (snapshot.configuredArgs ?? []) as readonly string[],
     );
+    if (
+      Object.hasOwn(snapshot, "processRunner") &&
+      typeof snapshot.processRunner !== "function"
+    )
+      throw new AwslError(
+        "CONFIG_ERROR",
+        "claude process runner must be an own data function",
+        { recoverable: false },
+      );
+    this.#processRunner =
+      (snapshot.processRunner as ClaudeProcessRunner | undefined) ??
+      runProviderProcess;
   }
 
   async run(request: ProviderRequest): Promise<ProviderOutcome> {
@@ -748,7 +774,7 @@ export class ClaudeAdapter implements ProviderAdapter {
         });
       }
 
-      await runProviderProcess({
+      await this.#processRunner({
         executable: this.identity.executableRealpath,
         argv: buildClaudeArgv({
           configuredArgs: this.#configuredArgs,

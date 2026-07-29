@@ -72,10 +72,12 @@ git diff --check
 
 ## Provider and oracle evidence
 
-AWSl accepts exactly Codex CLI `0.145.0` and Claude Code `2.1.218`. `awsl
-doctor` and run preparation fail closed for other versions; those exact
-versions are part of this profile rather than a promise about later provider
-releases.
+AWSl accepts exactly Codex CLI `0.145.0` or `0.146.0` and Claude Code
+`2.1.218`. `awsl doctor` and run preparation fail closed for other versions;
+those exact versions are part of this profile rather than a promise about later
+provider releases. The real-provider Codex evidence below remains specific to
+`0.145.0`; `0.146.0` support is covered by version-locked static and fixture
+tests, not a claimed real-provider acceptance run.
 
 | Behavior | Status | Evidence | Evidence pointer | Boundary |
 |---|---|---|---|---|

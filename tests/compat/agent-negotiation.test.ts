@@ -119,6 +119,52 @@ describe("agent policy negotiation", () => {
     expect(Object.hasOwn(selection.policy, "mcp")).toBe(true);
   });
 
+  test("preserves a legal Codex sandbox while rejecting it for Claude", () => {
+    expect(
+      negotiateAgent(
+        raw({ sandboxMode: "workspace-write" }),
+        "codex",
+        CODEX_CAPABILITIES,
+      ).policy,
+    ).toEqual({
+      instructions: "Review the requested change.",
+      name: "reviewer",
+      sandboxMode: "workspace-write",
+    });
+    expect(() =>
+      negotiateAgent(
+        raw({ sandboxMode: "workspace-write" }),
+        "claude",
+        CLAUDE_CAPABILITIES,
+      ),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "COMPATIBILITY_ERROR",
+        provider: "claude",
+      }),
+    );
+  });
+
+  test.each(["unrestricted", "dangerously-skip-permissions"])(
+    "rejects an invalid Codex sandbox mode",
+    (sandboxMode) => {
+      expect(() =>
+        negotiateAgent(
+          raw({
+            sandboxMode: sandboxMode as RawAgentDefinition["sandboxMode"],
+          }),
+          "codex",
+          CODEX_CAPABILITIES,
+        ),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "COMPATIBILITY_ERROR",
+          provider: "codex",
+        }),
+      );
+    },
+  );
+
   test.each([
     ["tools", ["Read", "--dangerously-skip-permissions"]],
     ["disallowedTools", ["--permission-mode"]],

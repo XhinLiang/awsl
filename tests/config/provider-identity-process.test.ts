@@ -22,6 +22,7 @@ import type {
 interface SpawnOptions {
   cwd: string;
   detached: boolean;
+  env: NodeJS.ProcessEnv;
   shell: false;
   stdio: readonly ["ignore", "pipe", "pipe"];
   windowsHide: true;
@@ -79,11 +80,15 @@ function defaultProbe(): DefaultProbe {
 function probeInput(
   overrides: Partial<ProviderVersionProbeInput> = {},
 ): ProviderVersionProbeInput {
+  const env = Object.assign(Object.create({}), {
+    AWSL_PROVIDER_VERSION_MARKER: "cli-context",
+  }) as NodeJS.ProcessEnv;
   return {
     executableRealpath: "/physical/provider",
     cwd: "/canonical/workspace",
     maxStdoutBytes: 64 * 1024,
     maxStderrBytes: 64 * 1024,
+    env,
     ...overrides,
   };
 }
@@ -181,6 +186,9 @@ describe("default provider version probe", () => {
       {
         cwd: "/canonical/workspace",
         detached: true,
+        env: expect.objectContaining({
+          AWSL_PROVIDER_VERSION_MARKER: "cli-context",
+        }),
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -198,6 +206,44 @@ describe("default provider version probe", () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(child.stdout.listenerCount("data")).toBe(0);
     expect(child.stderr.listenerCount("data")).toBe(0);
+  });
+
+  test("overrides and deletes ambient environment entries", async () => {
+    const child = new FakeChild();
+    const runtime = fakeRuntime(child);
+    const pending = defaultProbe()(
+      probeInput({
+        env: {
+          PATH: "/cli-context/bin",
+          HOME: undefined,
+        },
+      }),
+      runtime,
+    );
+
+    const spawnOptions = vi.mocked(runtime.spawn).mock.calls[0]?.[2];
+    expect(spawnOptions?.env.PATH).toBe("/cli-context/bin");
+    expect(Object.hasOwn(spawnOptions?.env ?? {}, "HOME")).toBe(false);
+    child.stdout.emit("data", Buffer.from("codex-cli 0.145.0\n"));
+    child.emit("close", 0, null);
+    await expect(pending).resolves.toMatchObject({ exitCode: 0 });
+  });
+
+  test("preserves a legitimate own __proto__ environment entry", async () => {
+    const child = new FakeChild();
+    const runtime = fakeRuntime(child);
+    const env = JSON.parse(
+      '{"AWSL_PROVIDER_VERSION_MARKER":"cli-context","__proto__":"provider-context"}',
+    ) as NodeJS.ProcessEnv;
+    const pending = defaultProbe()(probeInput({ env }), runtime);
+
+    child.stdout.emit("data", Buffer.from("codex-cli 0.145.0\n"));
+    child.emit("close", 0, null);
+    await expect(pending).resolves.toMatchObject({ exitCode: 0 });
+
+    const spawnEnvironment = vi.mocked(runtime.spawn).mock.calls[0]?.[2].env;
+    expect(Object.hasOwn(spawnEnvironment, "__proto__")).toBe(true);
+    expect(spawnEnvironment.__proto__).toBe("provider-context");
   });
 
   test("accepts each independent stream at the exact 64 KiB limit", async () => {

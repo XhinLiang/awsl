@@ -43,6 +43,7 @@ export interface ProviderVersionProbeChild {
 export interface ProviderVersionSpawnOptions {
   readonly cwd: string;
   readonly detached: boolean;
+  readonly env: NodeJS.ProcessEnv;
   readonly shell: false;
   readonly stdio: readonly ["ignore", "pipe", "pipe"];
   readonly windowsHide: true;
@@ -72,6 +73,44 @@ const defaultRuntime: ProviderVersionProbeRuntime = {
 
 function probeError(message: string): AwslError {
   return new AwslError("CONFIG_ERROR", message, { recoverable: false });
+}
+
+function snapshotEnvironmentRecord(value: unknown): NodeJS.ProcessEnv {
+  if (value === null || typeof value !== "object" || isProxy(value))
+    throw probeError("provider version environment is invalid");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !key ||
+        key.includes("\0") ||
+        key.includes("=") ||
+        !descriptors[key].enumerable ||
+        !("value" in descriptors[key]) ||
+        (descriptors[key].value !== undefined &&
+          (typeof descriptors[key].value !== "string" ||
+            descriptors[key].value.includes("\0"))),
+    )
+  )
+    throw probeError("provider version environment is invalid");
+  const snapshot = Object.create(null) as NodeJS.ProcessEnv;
+  for (const key of keys as string[])
+    snapshot[key] = descriptors[key].value as string | undefined;
+  return snapshot;
+}
+
+function mergeEnvironment(overrides: unknown): NodeJS.ProcessEnv {
+  const environment = snapshotEnvironmentRecord(process.env);
+  if (overrides !== undefined) {
+    const captured = snapshotEnvironmentRecord(overrides);
+    for (const [key, value] of Object.entries(captured)) {
+      if (value === undefined) delete environment[key];
+      else environment[key] = value;
+    }
+  }
+  return Object.freeze(environment);
 }
 
 function errno(error: unknown): string | undefined {
@@ -160,12 +199,14 @@ export async function defaultProviderVersionProbe(
     input.maxStderrBytes < 0
   )
     throw probeError("provider version stream limit is invalid");
+  const env = mergeEnvironment(input.env);
 
   let child: ProviderVersionProbeChild;
   try {
     child = runtime.spawn(input.executableRealpath, ["--version"], {
       cwd: input.cwd,
       detached: runtime.platform !== "win32",
+      env,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,

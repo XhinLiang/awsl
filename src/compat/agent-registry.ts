@@ -15,12 +15,14 @@ import {
 } from "../config/paths.js";
 import type { ResolvedWorkflowSource } from "../config/workflow-resolver.js";
 import { AwslError } from "../core/errors.js";
+import type { ProviderId } from "../core/types.js";
 import {
   type AgentDefinitionSource,
   type RawAgentDefinition,
   parseAgentDefinition,
 } from "./agent-definition.js";
 import { WORKFLOW_SUBAGENT_SOURCE } from "./builtins/workflow-subagent.js";
+import { parseCodexAgentDefinition } from "./codex-agent-definition.js";
 import { type CompiledWorkflow, compileWorkflow } from "./compile.js";
 
 export type RegistryTier = "project" | "user" | "builtin" | "plugin";
@@ -57,25 +59,31 @@ export interface AgentRegistry {
 
 export interface CreateRegistryOptions {
   cwd: string;
+  provider: ProviderId;
   pluginDirs?: readonly string[];
   enabledPluginRoots?: readonly string[];
   claudeConfigDir?: string;
+  codexConfigDir?: string;
   homeDir?: string;
 }
 
 interface SnapshottedOptions {
   cwd: string;
+  provider: ProviderId;
   pluginDirs: readonly string[];
   enabledPluginRoots: readonly string[];
   claudeConfigDir?: string;
+  codexConfigDir?: string;
   homeDir?: string;
 }
 
 const optionKeys = new Set([
   "cwd",
+  "provider",
   "pluginDirs",
   "enabledPluginRoots",
   "claudeConfigDir",
+  "codexConfigDir",
   "homeDir",
 ]);
 const pluginName = /^[a-z0-9][a-z0-9._-]{0,127}$/;
@@ -152,11 +160,14 @@ function snapshotOptions(value: unknown): SnapshottedOptions {
     }
     if (typeof fields.cwd !== "string")
       return registryError("registry cwd must be a string");
-    for (const key of ["claudeConfigDir", "homeDir"] as const)
+    if (fields.provider !== "codex" && fields.provider !== "claude")
+      return registryError("registry provider must be codex or claude");
+    for (const key of ["claudeConfigDir", "codexConfigDir", "homeDir"] as const)
       if (fields[key] !== undefined && typeof fields[key] !== "string")
         return registryError(`registry ${key} must be a string`);
     return {
       cwd: fields.cwd,
+      provider: fields.provider,
       pluginDirs:
         fields.pluginDirs === undefined
           ? Object.freeze([])
@@ -168,6 +179,9 @@ function snapshotOptions(value: unknown): SnapshottedOptions {
       ...(fields.claudeConfigDir === undefined
         ? {}
         : { claudeConfigDir: fields.claudeConfigDir }),
+      ...(fields.codexConfigDir === undefined
+        ? {}
+        : { codexConfigDir: fields.codexConfigDir }),
       ...(fields.homeDir === undefined ? {} : { homeDir: fields.homeDir }),
     } as SnapshottedOptions;
   } catch (error) {
@@ -215,7 +229,7 @@ function entryName(value: Buffer): string {
 
 async function candidates(
   root: string | null,
-  extension: ".js" | ".md",
+  extension: ".js" | ".md" | ".toml",
 ): Promise<readonly string[]> {
   if (root === null) return Object.freeze([]);
   const result: string[] = [];
@@ -291,8 +305,9 @@ function agentEntry(
   key: string,
   tier: RegistryTier,
   snapshot: ReadSnapshot | null,
+  provider: ProviderId,
   plugin?: RegistryPluginProvenance,
-): RegistryAgentEntry {
+): RegistryAgentEntry | null {
   const source: AgentDefinitionSource =
     tier === "builtin"
       ? {
@@ -306,12 +321,16 @@ function agentEntry(
           realpath: (snapshot as ReadSnapshot).realpath,
           sha256: (snapshot as ReadSnapshot).sha256,
         };
-  const definition = parseAgentDefinition(
-    tier === "builtin"
-      ? WORKFLOW_SUBAGENT_SOURCE
-      : (snapshot as ReadSnapshot).source,
-    source,
-  );
+  const definition =
+    tier === "builtin" || provider === "claude"
+      ? parseAgentDefinition(
+          tier === "builtin"
+            ? WORKFLOW_SUBAGENT_SOURCE
+            : (snapshot as ReadSnapshot).source,
+          source,
+        )
+      : parseCodexAgentDefinition((snapshot as ReadSnapshot).source, source);
+  if (definition === null) return null;
   if (definition.name.includes(":"))
     registryError("registry agent name must not contain ':'");
   return Object.freeze({
@@ -395,9 +414,14 @@ export async function createRegistry(
 ): Promise<AgentRegistry> {
   const captured = snapshotOptions(input);
   const ambientClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const ambientCodexConfigDir = process.env.CODEX_HOME;
   const home = captured.homeDir ?? homedir();
-  const userReference =
+  const claudeReference =
     captured.claudeConfigDir || ambientClaudeConfigDir || join(home, ".claude");
+  const codexReference =
+    captured.codexConfigDir || ambientCodexConfigDir || join(home, ".codex");
+  const userAgentReference =
+    captured.provider === "claude" ? claudeReference : codexReference;
   const cwd = await canonicalCwd(captured.cwd);
   const projectRoot = await resolveProjectRoot(cwd);
   const projectWorkflowRoot = await canonicalDirectory(
@@ -406,17 +430,17 @@ export async function createRegistry(
     false,
   );
   const projectAgentRoot = await canonicalDirectory(
-    join(projectRoot, ".claude", "agents"),
+    join(projectRoot, `.${captured.provider}`, "agents"),
     cwd,
     false,
   );
   const userWorkflowRoot = await canonicalDirectory(
-    join(userReference, "workflows"),
+    join(claudeReference, "workflows"),
     cwd,
     false,
   );
   const userAgentRoot = await canonicalDirectory(
-    join(userReference, "agents"),
+    join(userAgentReference, "agents"),
     cwd,
     false,
   );
@@ -470,11 +494,15 @@ export async function createRegistry(
   ): Promise<void> => {
     const names = tierAgentNames.get(tier) ?? new Set<string>();
     tierAgentNames.set(tier, names);
-    for (const path of await candidates(root, ".md")) {
+    for (const path of await candidates(
+      root,
+      captured.provider === "claude" ? ".md" : ".toml",
+    )) {
       const snapshot = await readRegularUtf8(path, cwd);
       if (seenUnqualifiedAgentRealpaths.has(snapshot.realpath)) continue;
       seenUnqualifiedAgentRealpaths.add(snapshot.realpath);
-      const entry = agentEntry("", tier, snapshot);
+      const entry = agentEntry("", tier, snapshot, captured.provider);
+      if (entry === null) continue;
       const key = entry.agent.name;
       if (key.includes(":"))
         registryError("registry agent name must not contain ':'");
@@ -490,7 +518,13 @@ export async function createRegistry(
   await scanAgentTier("project", projectAgentRoot);
   await scanAgentTier("user", userAgentRoot);
 
-  const builtin = agentEntry("workflow-subagent", "builtin", null);
+  const builtin = agentEntry(
+    "workflow-subagent",
+    "builtin",
+    null,
+    captured.provider,
+  );
+  if (builtin === null) registryError("builtin agent definition is invalid");
   if (!agents.has(builtin.key)) agents.set(builtin.key, builtin);
 
   const plugins: RegistryPluginProvenance[] = [];
@@ -512,11 +546,6 @@ export async function createRegistry(
       cwd,
       false,
     );
-    const agentRoot = await canonicalDirectory(
-      join(root.realpath, "agents"),
-      cwd,
-      false,
-    );
     for (const path of await candidates(workflowRoot, ".js")) {
       const snapshot = await readRegularUtf8(path, cwd);
       if (workflowRealpaths.has(snapshot.realpath)) continue;
@@ -530,18 +559,32 @@ export async function createRegistry(
       pluginWorkflowKeys.add(key);
       workflows.set(key, workflowEntry(key, "plugin", snapshot, plugin));
     }
-    for (const path of await candidates(agentRoot, ".md")) {
-      const snapshot = await readRegularUtf8(path, cwd);
-      if (agentRealpaths.has(snapshot.realpath)) continue;
-      agentRealpaths.add(snapshot.realpath);
-      const unkeyed = agentEntry("", "plugin", snapshot, plugin);
-      if (unkeyed.agent.name.includes(":"))
-        registryError("registry agent name must not contain ':'");
-      const key = `${plugin.name}:${unkeyed.agent.name}`;
-      if (pluginAgentKeys.has(key) || agents.has(key))
-        pluginCollision("agent", key);
-      pluginAgentKeys.add(key);
-      agents.set(key, Object.freeze({ ...unkeyed, key }));
+    if (captured.provider === "claude") {
+      const agentRoot = await canonicalDirectory(
+        join(root.realpath, "agents"),
+        cwd,
+        false,
+      );
+      for (const path of await candidates(agentRoot, ".md")) {
+        const snapshot = await readRegularUtf8(path, cwd);
+        if (agentRealpaths.has(snapshot.realpath)) continue;
+        agentRealpaths.add(snapshot.realpath);
+        const unkeyed = agentEntry(
+          "",
+          "plugin",
+          snapshot,
+          captured.provider,
+          plugin,
+        );
+        if (unkeyed === null) continue;
+        if (unkeyed.agent.name.includes(":"))
+          registryError("registry agent name must not contain ':'");
+        const key = `${plugin.name}:${unkeyed.agent.name}`;
+        if (pluginAgentKeys.has(key) || agents.has(key))
+          pluginCollision("agent", key);
+        pluginAgentKeys.add(key);
+        agents.set(key, Object.freeze({ ...unkeyed, key }));
+      }
     }
   }
 

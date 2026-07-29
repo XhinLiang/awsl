@@ -67,7 +67,10 @@ function validateIntegerOption(
 }
 
 function mergeEnvironment(overrides: NodeJS.ProcessEnv | undefined) {
-  const environment: NodeJS.ProcessEnv = { ...process.env };
+  const environment = Object.assign(
+    Object.create(null),
+    process.env,
+  ) as NodeJS.ProcessEnv;
   for (const [key, value] of Object.entries(overrides ?? {})) {
     if (value === undefined) delete environment[key];
     else environment[key] = value;

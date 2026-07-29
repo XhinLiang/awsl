@@ -16,6 +16,8 @@ interface Layout {
   cwd: string;
   projectClaude: string;
   userClaude: string;
+  projectCodex: string;
+  userCodex: string;
 }
 
 async function layout(): Promise<Layout> {
@@ -23,9 +25,11 @@ async function layout(): Promise<Layout> {
   const cwd = join(root, "project", "nested");
   const projectClaude = join(root, "project", ".claude");
   const userClaude = join(root, "user", ".claude");
+  const projectCodex = join(root, "project", ".codex");
+  const userCodex = join(root, "user", ".codex");
   await mkdir(join(root, "project", ".git"), { recursive: true });
   await mkdir(cwd, { recursive: true });
-  return { root, cwd, projectClaude, userClaude };
+  return { root, cwd, projectClaude, userClaude, projectCodex, userCodex };
 }
 
 async function writeWorkflow(
@@ -43,10 +47,26 @@ async function writeAgent(
   root: string,
   relative: string,
   name: string,
+  instructions = name,
 ): Promise<string> {
   const path = join(root, "agents", relative);
   await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, agent(name));
+  await writeFile(path, agent(name, instructions));
+  return path;
+}
+
+async function writeCodexAgent(
+  root: string,
+  relative: string,
+  name: string,
+  model = "gpt-5.6",
+): Promise<string> {
+  const path = join(root, "agents", relative);
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(
+    path,
+    `name = ${JSON.stringify(name)}\ndescription = ${JSON.stringify(name)}\ndeveloper_instructions = ${JSON.stringify(`instructions for ${name}`)}\nmodel = ${JSON.stringify(model)}\n`,
+  );
   return path;
 }
 
@@ -57,11 +77,197 @@ async function writePlugin(root: string, manifest: string): Promise<void> {
 
 const options = (value: Layout) => ({
   cwd: value.cwd,
+  provider: "claude" as const,
   claudeConfigDir: value.userClaude,
   homeDir: join(value.root, "unused-home"),
 });
 
 describe("agent registry", () => {
+  test("selects the provider-native agent definition while retaining Claude workflows", async () => {
+    const value = await layout();
+    await writeAgent(
+      value.projectClaude,
+      "same.md",
+      "shared",
+      "claude instructions",
+    );
+    await writeCodexAgent(
+      value.projectCodex,
+      "same.toml",
+      "shared",
+      "gpt-5.6-codex",
+    );
+    await writeWorkflow(value.projectClaude, "workflow.js", "still-claude");
+
+    const claude = await createRegistry(options(value));
+    const codex = await createRegistry({
+      cwd: value.cwd,
+      provider: "codex",
+      claudeConfigDir: value.userClaude,
+      codexConfigDir: value.userCodex,
+      homeDir: join(value.root, "unused-home"),
+    });
+
+    await expect(claude.resolveAgent("shared")).resolves.toMatchObject({
+      agent: { instructions: "claude instructions\n" },
+    });
+    await expect(codex.resolveAgent("shared")).resolves.toMatchObject({
+      agent: {
+        instructions: "instructions for shared",
+        model: "gpt-5.6-codex",
+      },
+    });
+    await expect(codex.resolveWorkflow("still-claude")).resolves.toMatchObject({
+      tier: "project",
+    });
+  });
+
+  test("Claude ignores malformed Codex agent definitions", async () => {
+    const value = await layout();
+    await mkdir(join(value.projectCodex, "agents"), { recursive: true });
+    await writeFile(
+      join(value.projectCodex, "agents", "malformed.toml"),
+      'name = "unterminated',
+    );
+
+    await expect(createRegistry(options(value))).resolves.toMatchObject({
+      agents: expect.any(Array),
+    });
+  });
+
+  test("Codex ignores malformed Claude agent definitions", async () => {
+    const value = await layout();
+    await mkdir(join(value.projectClaude, "agents"), { recursive: true });
+    await writeFile(
+      join(value.projectClaude, "agents", "malformed.md"),
+      "not an agent definition",
+    );
+
+    await expect(
+      createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        codexConfigDir: value.userCodex,
+        homeDir: join(value.root, "unused-home"),
+      }),
+    ).resolves.toMatchObject({ agents: expect.any(Array) });
+  });
+
+  test("uses Codex project precedence, skips fragments, and rejects duplicate names", async () => {
+    const value = await layout();
+    await writeCodexAgent(value.projectCodex, "override.toml", "native");
+    await writeCodexAgent(value.userCodex, "user.toml", "native", "user-model");
+    await mkdir(join(value.projectCodex, "agents"), { recursive: true });
+    await writeFile(
+      join(value.projectCodex, "agents", "professional_xhigh.toml"),
+      'model_reasoning_effort = "xhigh"\n',
+    );
+    const registry = await createRegistry({
+      cwd: value.cwd,
+      provider: "codex",
+      codexConfigDir: value.userCodex,
+      homeDir: join(value.root, "unused-home"),
+    });
+    await expect(registry.resolveAgent("native")).resolves.toMatchObject({
+      tier: "project",
+    });
+    await expect(registry.resolveAgent("professional_xhigh")).rejects.toThrow();
+
+    await writeCodexAgent(value.projectCodex, "duplicate.toml", "native");
+    await expect(
+      createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        codexConfigDir: value.userCodex,
+        homeDir: join(value.root, "unused-home"),
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFIG_ERROR",
+      message: 'duplicate project agent frontmatter name "native"',
+    });
+  });
+
+  test("resolves explicit, ambient, and empty CODEX_HOME from canonical cwd", async () => {
+    const value = await layout();
+    const relative = "relative-codex";
+    const home = join(value.root, "home");
+    await writeCodexAgent(
+      join(value.cwd, relative),
+      "relative.toml",
+      "relative",
+    );
+    await writeCodexAgent(join(home, ".codex"), "fallback.toml", "fallback");
+    const previous = process.env.CODEX_HOME;
+    try {
+      const explicit = await createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        codexConfigDir: relative,
+        homeDir: home,
+      });
+      await expect(explicit.resolveAgent("relative")).resolves.toMatchObject({
+        tier: "user",
+      });
+      process.env.CODEX_HOME = relative;
+      const ambient = await createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        homeDir: home,
+      });
+      await expect(ambient.resolveAgent("relative")).resolves.toMatchObject({
+        tier: "user",
+      });
+      process.env.CODEX_HOME = "";
+      const fallback = await createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        homeDir: home,
+      });
+      await expect(fallback.resolveAgent("fallback")).resolves.toMatchObject({
+        tier: "user",
+      });
+    } finally {
+      if (previous === undefined)
+        Reflect.deleteProperty(process.env, "CODEX_HOME");
+      else process.env.CODEX_HOME = previous;
+    }
+  });
+
+  test("does not expose Claude plugin agents for the Codex provider", async () => {
+    const value = await layout();
+    const pluginRoot = join(value.root, "plugin");
+    await writePlugin(pluginRoot, '{"name":"plugin"}');
+    await writeAgent(pluginRoot, "helper.md", "helper");
+    const registry = await createRegistry({
+      cwd: value.cwd,
+      provider: "codex",
+      codexConfigDir: value.userCodex,
+      homeDir: join(value.root, "unused-home"),
+      pluginDirs: [pluginRoot],
+    });
+    await expect(registry.resolveAgent("plugin:helper")).rejects.toThrow();
+  });
+
+  test("deduplicates Codex agent symlinks by canonical realpath", async () => {
+    const value = await layout();
+    const source = await writeCodexAgent(
+      value.projectCodex,
+      "source.toml",
+      "deduped",
+    );
+    await symlink(source, join(value.projectCodex, "agents", "duplicate.toml"));
+    const registry = await createRegistry({
+      cwd: value.cwd,
+      provider: "codex",
+      codexConfigDir: value.userCodex,
+      homeDir: join(value.root, "unused-home"),
+    });
+
+    expect(
+      registry.agents.filter((entry) => entry.key === "deduped"),
+    ).toHaveLength(1);
+  });
+
   test("applies project, user, and builtin precedence and freezes completed discovery", async () => {
     const value = await layout();
     await writeWorkflow(value.projectClaude, "project.js", "same");
@@ -112,6 +318,7 @@ describe("agent registry", () => {
 
     const registry = await createRegistry({
       cwd: value.cwd,
+      provider: "claude",
       claudeConfigDir: relative,
       homeDir: join(value.root, "unused-home"),
     });
@@ -128,11 +335,19 @@ describe("agent registry", () => {
     await writeAgent(join(home, ".claude"), "home.md", "home");
     try {
       process.env.CLAUDE_CONFIG_DIR = ambientRelative;
-      const ambient = await createRegistry({ cwd: value.cwd, homeDir: home });
+      const ambient = await createRegistry({
+        cwd: value.cwd,
+        provider: "claude",
+        homeDir: home,
+      });
       expect((await ambient.resolveAgent("ambient")).tier).toBe("user");
 
       process.env.CLAUDE_CONFIG_DIR = "";
-      const fallback = await createRegistry({ cwd: value.cwd, homeDir: home });
+      const fallback = await createRegistry({
+        cwd: value.cwd,
+        provider: "claude",
+        homeDir: home,
+      });
       expect((await fallback.resolveAgent("home")).tier).toBe("user");
     } finally {
       if (previous === undefined)
@@ -740,6 +955,15 @@ describe("agent registry", () => {
     ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
     await expect(
       createRegistry({ ...options(value), [Symbol("x")]: true } as never),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+    await expect(
+      createRegistry({
+        cwd: value.cwd,
+        homeDir: join(value.root, "unused-home"),
+      } as never),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+    await expect(
+      createRegistry({ ...options(value), provider: "other" } as never),
     ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
 
     let arrayGetterCalls = 0;

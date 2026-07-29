@@ -34,6 +34,10 @@ import type {
 } from "../core/types.js";
 import { ClaudeAdapter } from "../providers/claude.js";
 import { CodexAdapter } from "../providers/codex.js";
+import {
+  type RunProviderProcessOptions,
+  runProviderProcess,
+} from "../providers/process.js";
 import { runWorkflow } from "../runtime/engine.js";
 import { redactJson } from "../store/redact.js";
 import { FileRunStore } from "../store/run-store.js";
@@ -279,8 +283,11 @@ async function lockOwner(): Promise<LockOwner> {
 function adapter(
   config: ResolvedAwslConfig,
   identity: ProviderIdentity,
+  env: NodeJS.ProcessEnv,
 ): ProviderAdapter {
   const selected = config.providers[config.provider];
+  const processRunner = (options: RunProviderProcessOptions) =>
+    runProviderProcess({ ...options, env });
   return config.provider === "codex"
     ? new CodexAdapter({
         identity,
@@ -288,10 +295,12 @@ function adapter(
         ...(config.providers.codex.profile === undefined
           ? {}
           : { profile: config.providers.codex.profile }),
+        processRunner,
       })
     : new ClaudeAdapter({
         identity,
         configuredArgs: selected.args,
+        processRunner,
       });
 }
 
@@ -333,11 +342,14 @@ async function prepareRuntime(options: {
   const projectRoot = await resolveProjectRoot(canonical);
   const registry = await createRegistry({
     cwd: canonical,
+    provider: loaded.value.provider,
     pluginDirs: loaded.value.registry.pluginDirs,
     homeDir: options.context.homeDir,
     claudeConfigDir:
       options.context.env.CLAUDE_CONFIG_DIR ||
       `${options.context.homeDir}/.claude`,
+    codexConfigDir:
+      options.context.env.CODEX_HOME || `${options.context.homeDir}/.codex`,
   });
   const selected = loaded.value.providers[loaded.value.provider];
   const identity = await resolveProviderIdentity({
@@ -346,7 +358,7 @@ async function prepareRuntime(options: {
     cwd: canonical,
     env: options.context.env,
   });
-  const providerAdapter = adapter(loaded.value, identity);
+  const providerAdapter = adapter(loaded.value, identity, options.context.env);
   const providerPin = await createProviderPin({
     identity,
     config: loaded.value,

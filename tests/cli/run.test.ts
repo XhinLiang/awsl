@@ -1,4 +1,11 @@
-import { chmod, mkdtemp, readFile, realpath } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,9 +22,12 @@ const workflows = dirname(
 const fakeCodex = fileURLToPath(
   new URL("../fixtures/bin/fake-codex.mjs", import.meta.url),
 );
+const fakeClaude = fileURLToPath(
+  new URL("../fixtures/bin/fake-claude.mjs", import.meta.url),
+);
 
 beforeAll(async () => {
-  await chmod(fakeCodex, 0o755);
+  await Promise.all([chmod(fakeCodex, 0o755), chmod(fakeClaude, 0o755)]);
 });
 
 function output(format: "pretty" | "json" | "jsonl") {
@@ -185,25 +195,18 @@ describe("CLI workflow execution", () => {
       CODEX_HOME: join(cwd, "codex-home"),
     };
     const cli = cliContext(cwd, env);
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      expect(
-        await executeCli(
-          [
-            join(workflows, "args.js"),
-            "--args",
-            '{"value":7}',
-            "--format",
-            "json",
-          ],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    expect(
+      await executeCli(
+        [
+          join(workflows, "args.js"),
+          "--args",
+          '{"value":7}',
+          "--format",
+          "json",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
     expect(JSON.parse(cli.output().stdout)).toMatchObject({
       runId: expect.stringMatching(/^wf-/),
       status: "completed",
@@ -224,26 +227,19 @@ describe("CLI workflow execution", () => {
       CODEX_HOME: join(cwd, "codex-home"),
     };
     const cli = cliContext(cwd, env);
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      expect(
-        await executeCli(
-          [
-            "run",
-            join(workflows, "nested", "basic-agent.js"),
-            "--args",
-            '{"prompt":"hello"}',
-            "--format",
-            "jsonl",
-          ],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--args",
+          '{"prompt":"hello"}',
+          "--format",
+          "jsonl",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
     const events = cli
       .output()
       .stdout.trim()
@@ -258,5 +254,158 @@ describe("CLI workflow execution", () => {
       },
     });
     expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+  });
+
+  test("passes the CLI context environment to the Claude provider process", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-cli-run-")));
+    const capture = join(cwd, "claude-capture.jsonl");
+    const ambientCapture = process.env.AWSL_FAKE_CLAUDE_CAPTURE;
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_CLAUDE_COMMAND: fakeClaude,
+      AWSL_FAKE_CLAUDE_CAPTURE: capture,
+      CLAUDE_CONFIG_DIR: join(cwd, "claude-config"),
+    };
+    const cli = cliContext(cwd, env);
+
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--provider",
+          "claude",
+          "--args",
+          '{"prompt":"fixture:success"}',
+          "--format",
+          "jsonl",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
+
+    const events = cli
+      .output()
+      .stdout.trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(events.at(-1)).toMatchObject({
+      type: "run.completed",
+      data: {
+        status: "completed",
+        result: {
+          answer: "ok",
+          requestedStatus: "failed",
+        },
+      },
+    });
+    const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
+    expect(invocation.prompt).toBe("fixture:success");
+    expect(invocation.argv).toEqual(
+      expect.arrayContaining([
+        "-p",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+      ]),
+    );
+    expect(process.env.AWSL_FAKE_CLAUDE_CAPTURE).toBe(ambientCapture);
+  });
+
+  test("routes a named Codex agent to its native TOML policy on Codex CLI 0.146.0", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-cli-run-")));
+    const codexHome = join(cwd, "codex-home");
+    const claudeConfigDir = join(cwd, "claude-config");
+    const workflow = join(cwd, "named-agent.js");
+    const log = join(cwd, "codex.log");
+    const capture = join(cwd, "codex-capture.jsonl");
+    await Promise.all([
+      mkdir(join(codexHome, "agents"), { recursive: true }),
+      mkdir(join(claudeConfigDir, "agents"), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(
+        join(codexHome, "agents", "audit-worker.toml"),
+        [
+          'name = "audit-worker"',
+          'description = "Native audit worker"',
+          'developer_instructions = "CODEX_NATIVE_AUDIT_MARKER"',
+          'model = "gpt-5.5"',
+          'model_reasoning_effort = "xhigh"',
+          'sandbox_mode = "read-only"',
+          "",
+        ].join("\n"),
+      ),
+      writeFile(
+        join(claudeConfigDir, "agents", "audit-worker.md"),
+        [
+          "---",
+          "name: audit-worker",
+          "description: Foreign audit worker",
+          "model: claude-opus-foreign",
+          "---",
+          "CLAUDE_FOREIGN_AUDIT_MARKER",
+          "",
+        ].join("\n"),
+      ),
+      writeFile(
+        workflow,
+        [
+          "export const meta = {",
+          '  name: "named-codex-agent",',
+          '  description: "Run one named agent",',
+          "}",
+          "",
+          'return await agent("native agent prompt", { agentType: "audit-worker" })',
+          "",
+        ].join("\n"),
+      ),
+    ]);
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_CODEX_COMMAND: fakeCodex,
+      AWSL_FAKE_CODEX_LOG: log,
+      AWSL_FAKE_CODEX_CAPTURE: capture,
+      AWSL_FAKE_CODEX_VERSION: "0.146.0",
+      CODEX_HOME: codexHome,
+      CLAUDE_CONFIG_DIR: claudeConfigDir,
+    };
+    const cli = cliContext(cwd, env);
+    const ambientVersion = process.env.AWSL_FAKE_CODEX_VERSION;
+    expect(
+      await executeCli(
+        ["run", workflow, "--provider", "codex", "--format", "jsonl"],
+        cli.context,
+      ),
+    ).toBe(0);
+
+    const events = cli
+      .output()
+      .stdout.trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(events.at(-1)).toMatchObject({
+      type: "run.completed",
+      data: { status: "completed", result: "FAKE" },
+    });
+    const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
+    expect(invocation.argv).toEqual([
+      "-m",
+      "gpt-5.5",
+      "-c",
+      'model_reasoning_effort="xhigh"',
+      "--sandbox",
+      "read-only",
+      "exec",
+      "--json",
+      "-",
+    ]);
+    expect(invocation.prompt).toContain("CODEX_NATIVE_AUDIT_MARKER");
+    expect(invocation.prompt).not.toContain("CLAUDE_FOREIGN_AUDIT_MARKER");
+    expect(invocation.argv).not.toContain("claude-opus-foreign");
+    expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+    expect(process.env.AWSL_FAKE_CODEX_VERSION).toBe(ambientVersion);
   });
 });

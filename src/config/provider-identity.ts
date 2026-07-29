@@ -21,6 +21,7 @@ export interface ProviderVersionProbeInput {
   readonly cwd: string;
   readonly maxStdoutBytes: number;
   readonly maxStderrBytes: number;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface ProviderVersionProbeResult {
@@ -129,6 +130,21 @@ async function canonicalExecutable(candidate: string): Promise<string> {
   return physical;
 }
 
+function isMissingOrNotDirectoryError(error: unknown): boolean {
+  try {
+    if (error === null || typeof error !== "object" || isProxy(error))
+      return false;
+    const descriptor = Object.getOwnPropertyDescriptor(error, "code");
+    return (
+      descriptor !== undefined &&
+      "value" in descriptor &&
+      (descriptor.value === "ENOENT" || descriptor.value === "ENOTDIR")
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function resolveBareExecutable(
   name: string,
   pathValue: string,
@@ -139,22 +155,26 @@ async function resolveBareExecutable(
   for (const directory of directories) {
     if (!directory || directory.includes("\0") || !isAbsolute(directory))
       configError("provider PATH contains an invalid directory");
+    lexicalPath(directory, "/");
+  }
+
+  const searchableDirectories: string[] = [];
+  for (const directory of directories) {
     try {
-      lexicalPath(directory, "/");
-      if (!(await stat(directory)).isDirectory())
-        configError("provider PATH entry is not a directory");
+      const information = await stat(directory);
+      if (information.isDirectory()) searchableDirectories.push(directory);
     } catch (error) {
-      if (error instanceof AwslError) throw error;
+      if (isMissingOrNotDirectoryError(error)) continue;
       configError("provider PATH entry is unavailable");
     }
   }
 
-  for (const directory of directories) {
+  for (const directory of searchableDirectories) {
     const candidate = join(directory, name);
     try {
       await lstat(candidate);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (isMissingOrNotDirectoryError(error)) continue;
       configError("provider executable candidate is unavailable");
     }
     return canonicalExecutable(candidate);
@@ -277,7 +297,7 @@ export function validateNormalizedProviderVersion(
   value: unknown,
 ): string {
   if (
-    (provider === "codex" && value === "0.145.0") ||
+    (provider === "codex" && (value === "0.145.0" || value === "0.146.0")) ||
     (provider === "claude" && value === "2.1.218")
   )
     return value;
@@ -289,6 +309,7 @@ export function normalizeProviderVersionBanner(
   value: string,
 ): string {
   if (provider === "codex" && value === "codex-cli 0.145.0") return "0.145.0";
+  if (provider === "codex" && value === "codex-cli 0.146.0") return "0.146.0";
   if (provider === "claude" && value === "2.1.218 (Claude Code)")
     return "2.1.218";
   return compatibilityError(provider, "provider version is incompatible");
@@ -312,7 +333,6 @@ export async function resolveProviderIdentity(
     (typeof configuredProbe !== "function" || isProxy(configuredProbe))
   )
     configError("provider version probe is unavailable");
-  const probe = configuredProbe ?? defaultProviderVersionProbe;
   const pathValue =
     kind === "bare" ? snapshotPath(captured.env ?? process.env) : undefined;
 
@@ -323,14 +343,19 @@ export async function resolveProviderIdentity(
       : await canonicalExecutable(lexicalPath(executable as string, cwd));
   let rawResult: unknown;
   try {
-    rawResult = await (probe as ProviderVersionProbe)(
-      Object.freeze({
-        executableRealpath,
-        cwd,
-        maxStdoutBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
-        maxStderrBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
-      }),
-    );
+    const input = Object.freeze({
+      executableRealpath,
+      cwd,
+      maxStdoutBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
+      maxStderrBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
+    });
+    rawResult =
+      configuredProbe === undefined
+        ? await defaultProviderVersionProbe({
+            ...input,
+            env: (captured.env ?? process.env) as NodeJS.ProcessEnv,
+          })
+        : await (configuredProbe as ProviderVersionProbe)(input);
   } catch {
     configError("provider version probe failed");
   }

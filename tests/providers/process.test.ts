@@ -93,6 +93,33 @@ describe("runProviderProcess", () => {
     await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  test("preserves a legitimate own __proto__ environment override", async () => {
+    const events: unknown[] = [];
+    const env = JSON.parse(
+      '{"AWSL_TRANSPORT_SCENARIO":"capture-proto","__proto__":"provider-context"}',
+    ) as NodeJS.ProcessEnv;
+
+    await runProviderProcess({
+      executable: fixturePath,
+      argv: [],
+      cwd: await temporaryDirectory(),
+      prompt: "",
+      signal: new AbortController().signal,
+      env,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "proto",
+        own: true,
+        value: "provider-context",
+      },
+    ]);
+  });
+
   test("decodes UTF-8 split across stdout chunks", async () => {
     const events: unknown[] = [];
 

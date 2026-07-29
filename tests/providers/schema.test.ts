@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   createPrivateJsonFile,
+  prepareCodexJsonSchema,
   prepareProviderJsonSchema,
   serializeProviderJson,
 } from "../../src/providers/schema.js";
@@ -116,6 +117,157 @@ describe("provider JSON artifacts", () => {
         value: { pattern: "literal" },
       }),
     ).toBe(true);
+  });
+
+  test("keeps optional workflow validation while only the Codex packet closes required fields", () => {
+    const workflowSchema = {
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        note: { type: "string" },
+      },
+      required: ["id"],
+      type: "object",
+    };
+    const originalPacket = JSON.stringify(workflowSchema);
+
+    const codex = prepareCodexJsonSchema(workflowSchema, {
+      label: "Codex schema",
+    });
+    const claude = prepareProviderJsonSchema(workflowSchema, {
+      label: "Claude schema",
+      provider: "claude",
+    });
+
+    expect(JSON.parse(codex.packet)).toEqual({
+      ...workflowSchema,
+      required: ["id", "note"],
+    });
+    expect(codex.matches({ id: "present" })).toBe(true);
+    expect(codex.matches({ id: 42 })).toBe(false);
+    expect(claude.packet).toBe(originalPacket);
+    expect(JSON.stringify(workflowSchema)).toBe(originalPacket);
+  });
+
+  test.each([
+    {
+      name: "omitted",
+      schema: {
+        properties: {
+          child: {
+            additionalProperties: true,
+            properties: {
+              value: { type: "string" },
+            },
+            type: "object",
+          },
+        },
+        type: "object",
+      },
+    },
+    {
+      name: "true",
+      schema: {
+        additionalProperties: true,
+        properties: {
+          child: {
+            properties: {
+              value: { type: "string" },
+            },
+            type: "object",
+          },
+        },
+        type: "object",
+      },
+    },
+    {
+      name: "nullable",
+      schema: {
+        properties: {
+          child: {
+            properties: {
+              value: { type: "string" },
+            },
+            type: ["object", "null"],
+          },
+        },
+        type: "object",
+      },
+    },
+  ])(
+    "recursively closes $name object schemas only in the Codex packet",
+    ({ name, schema: workflowSchema }) => {
+      const originalPacket = JSON.stringify(workflowSchema);
+      const original = prepareProviderJsonSchema(workflowSchema, {
+        label: "workflow schema",
+        provider: "codex",
+      });
+      const codex = prepareCodexJsonSchema(workflowSchema, {
+        label: "Codex schema",
+      });
+      const packet = JSON.parse(codex.packet) as {
+        additionalProperties: boolean;
+        properties: {
+          child: {
+            additionalProperties: boolean;
+          };
+        };
+      };
+      const candidates = [
+        { child: { value: "ok" } },
+        { child: { nestedExtra: true, value: "ok" }, rootExtra: true },
+        { child: { value: 42 } },
+        { child: null },
+        {},
+      ];
+
+      expect(packet.additionalProperties).toBe(false);
+      expect(packet.properties.child.additionalProperties).toBe(false);
+      expect(candidates.map((candidate) => codex.matches(candidate))).toEqual(
+        candidates.map((candidate) => original.matches(candidate)),
+      );
+      expect(codex.matches(candidates[1])).toBe(true);
+      expect(codex.matches(candidates[3])).toBe(name === "nullable");
+      expect(JSON.stringify(workflowSchema)).toBe(originalPacket);
+    },
+  );
+
+  test("applies the byte limit to the closed Codex packet", () => {
+    const schema = { type: "object" };
+    const originalPacket = serializeProviderJson(schema, {
+      label: "schema",
+      provider: "codex",
+    });
+
+    expect(Buffer.byteLength(originalPacket)).toBeLessThan(32);
+    expect(() =>
+      prepareCodexJsonSchema(schema, {
+        label: "Codex schema",
+        maxBytes: 32,
+      }),
+    ).toThrow(/32 bytes/);
+  });
+
+  test("leaves an already closed Codex schema packet byte-for-byte stable", () => {
+    const schema = {
+      additionalProperties: false,
+      properties: {
+        first: { type: "string" },
+        second: { type: "string" },
+      },
+      required: ["second", "first"],
+      type: "object",
+    };
+    const original = prepareProviderJsonSchema(schema, {
+      label: "schema",
+      provider: "codex",
+    });
+
+    expect(
+      prepareCodexJsonSchema(schema, {
+        label: "schema",
+      }).packet,
+    ).toBe(original.packet);
   });
 
   test("creates mode-0600 files in a mode-0700 directory and removes both", async () => {

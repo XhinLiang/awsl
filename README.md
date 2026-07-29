@@ -16,7 +16,7 @@ evidence behind each verified, partial, or unsupported behavior.
 - Node.js 22 or newer
 - Git for `isolation: "worktree"`
 - At least one supported provider executable:
-  - Codex CLI `0.145.0`
+  - Codex CLI `0.145.0` or `0.146.0`
   - Claude Code `2.1.218`
 
 Provider versions are exact compatibility inputs. `awsl doctor` and run

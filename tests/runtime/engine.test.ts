@@ -217,6 +217,7 @@ class RecordingProvider implements ProviderAdapter {
     tools: { allowlist: false, denylist: false, denyAll: false },
     mcp: { additive: false, strictReplacement: false, denyAll: false },
     permissionModes: [] as readonly string[],
+    sandboxModes: [] as const,
     skills: false as const,
     structuredAttemptEvents: true,
     resolvedModelEvents: true,
@@ -330,6 +331,7 @@ async function harness(
   const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
   const registry = await createRegistry({
     cwd: canonicalCwd,
+    provider: "claude",
     homeDir: home,
     claudeConfigDir: join(home, "missing"),
   });
@@ -373,6 +375,7 @@ Run the ${name} branch.
   const root = await resolveRootWorkflow(workflowPath, canonicalCwd);
   const registry = await createRegistry({
     cwd: canonicalCwd,
+    provider: "claude",
     homeDir: home,
     claudeConfigDir: join(home, "missing"),
   });
@@ -605,6 +608,7 @@ return { value: await agent(args.prompt), spent: budget.spent() }
       const root = await resolveRootWorkflow(rootPath, canonicalCwd);
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
         pluginDirs: [plugin],
@@ -1394,6 +1398,101 @@ return await agent("two", { agentType: "drift" })
     );
   });
 
+  test("aborts active providers when the root worker fails terminally", async () => {
+    let providerStarted!: () => void;
+    const activeProvider = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
+    let providerAborted = false;
+    const provider = new RecordingProvider(async (request) => {
+      if (request.prompt === "barrier") {
+        await activeProvider;
+        return {
+          kind: "completed",
+          result: { text: "barrier-complete" },
+          usage: { outputTokens: 1, complete: true },
+        };
+      }
+      return new Promise<ProviderOutcome>((resolve, reject) => {
+        providerStarted();
+        const fallback = setTimeout(
+          () =>
+            resolve({
+              kind: "completed",
+              result: { text: "late" },
+              usage: { outputTokens: 1, complete: true },
+            }),
+          300,
+        );
+        const stop = () => {
+          providerAborted = true;
+          clearTimeout(fallback);
+          reject(
+            new AwslError("CANCELLED", "provider cancelled", {
+              provider: "codex",
+              recoverable: false,
+            }),
+          );
+        };
+        request.signal.addEventListener("abort", stop, { once: true });
+        if (request.signal.aborted) stop();
+      });
+    });
+    const store = new RecordingStore();
+    const fixture = await namedAgentHarness(
+      `export const meta = {
+  name: "terminal-worker-failure",
+  description: "Fail while a provider request is active",
+}
+
+void agent("slow")
+await agent("barrier")
+throw new Error("root worker exploded")
+`,
+      [],
+      provider,
+      store,
+    );
+    try {
+      const running = runWorkflow({
+        ...fixture.options,
+        runId: "terminal-worker-failure",
+        attemptId: "attempt-0",
+        attemptSeq: 0,
+        concurrency: 2,
+        lockOwner,
+      });
+      await activeProvider;
+
+      await expect(running).rejects.toMatchObject({
+        code: "WORKFLOW_ERROR",
+        message: expect.stringContaining("root worker exploded"),
+      });
+      expect(providerAborted).toBe(true);
+      expect(store.records).toContainEqual(
+        expect.objectContaining({
+          kind: "call",
+          state: "indeterminate",
+        }),
+      );
+      expect(
+        store.order.indexOf("call:0:indeterminate"),
+      ).toBeGreaterThanOrEqual(0);
+      expect(store.order.indexOf("call:0:indeterminate")).toBeLessThan(
+        store.order.indexOf("lock.release"),
+      );
+      expect(store.results.at(-1)).toMatchObject({
+        status: "failed",
+        error: {
+          code: "WORKFLOW_ERROR",
+          message: expect.stringContaining("root worker exploded"),
+        },
+      });
+    } finally {
+      await rm(fixture.sandbox, { recursive: true, force: true });
+    }
+  });
+
   test("persists cooperative pause separately from a killed cancellation", async () => {
     let providerStarted!: () => void;
     const activeProvider = new Promise<void>((resolve) => {
@@ -1526,6 +1625,7 @@ return await agent("two", { agentType: "drift" })
     await mkdir(runDir);
     const registry = await createRegistry({
       cwd: repoRoot,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
@@ -1594,6 +1694,7 @@ return await agent("two", { agentType: "drift" })
       await mkdir(runDir);
       const registry = await createRegistry({
         cwd: repoRoot,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -1780,6 +1881,7 @@ return await agent(args.prompt, { isolation: "worktree" })
       );
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -1933,6 +2035,7 @@ return await agent(args.prompt, { isolation: "worktree" })
       );
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -2149,6 +2252,7 @@ return await agent(args.prompt, { isolation: "worktree" })
     const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
     const registry: AgentRegistry = await createRegistry({
       cwd: canonicalCwd,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
@@ -2264,6 +2368,7 @@ return await agent(args.prompt, { isolation: "worktree" })
     const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
     const registry = await createRegistry({
       cwd: canonicalCwd,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
