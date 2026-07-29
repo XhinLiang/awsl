@@ -36,6 +36,15 @@ switch (scenario) {
     });
     break;
   }
+  case "capture-proto": {
+    await readStdin();
+    emit({
+      type: "proto",
+      own: Object.hasOwn(process.env, "__proto__"),
+      value: Object.getOwnPropertyDescriptor(process.env, "__proto__")?.value,
+    });
+    break;
+  }
   case "utf8-split": {
     await readStdin();
     const encoded = Buffer.from(

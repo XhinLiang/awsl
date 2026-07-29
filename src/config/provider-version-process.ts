@@ -95,7 +95,7 @@ function snapshotEnvironmentRecord(value: unknown): NodeJS.ProcessEnv {
     )
   )
     throw probeError("provider version environment is invalid");
-  const snapshot: NodeJS.ProcessEnv = {};
+  const snapshot = Object.create(null) as NodeJS.ProcessEnv;
   for (const key of keys as string[])
     snapshot[key] = descriptors[key].value as string | undefined;
   return snapshot;

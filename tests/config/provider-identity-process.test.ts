@@ -229,6 +229,23 @@ describe("default provider version probe", () => {
     await expect(pending).resolves.toMatchObject({ exitCode: 0 });
   });
 
+  test("preserves a legitimate own __proto__ environment entry", async () => {
+    const child = new FakeChild();
+    const runtime = fakeRuntime(child);
+    const env = JSON.parse(
+      '{"AWSL_PROVIDER_VERSION_MARKER":"cli-context","__proto__":"provider-context"}',
+    ) as NodeJS.ProcessEnv;
+    const pending = defaultProbe()(probeInput({ env }), runtime);
+
+    child.stdout.emit("data", Buffer.from("codex-cli 0.145.0\n"));
+    child.emit("close", 0, null);
+    await expect(pending).resolves.toMatchObject({ exitCode: 0 });
+
+    const spawnEnvironment = vi.mocked(runtime.spawn).mock.calls[0]?.[2].env;
+    expect(Object.hasOwn(spawnEnvironment, "__proto__")).toBe(true);
+    expect(spawnEnvironment.__proto__).toBe("provider-context");
+  });
+
   test("accepts each independent stream at the exact 64 KiB limit", async () => {
     const child = new FakeChild();
     const runtime = fakeRuntime(child);
