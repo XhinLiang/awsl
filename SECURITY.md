@@ -21,9 +21,9 @@ mitigation. Do not include live credentials or private provider output.
   deterministic compatibility boundaries, not an OS sandbox for hostile code.
 - Providers are launched directly as a binary plus argument vector without a
   shell. A provider CLI may apply ambient project instructions, hooks, MCP
-  servers, and permission settings; AWSl does not independently reproduce or
+  servers, and permission settings; awsl does not independently reproduce or
   certify all of that ambient configuration.
-- Restrictive named-agent policy is fail-closed. AWSl refuses a call if the
+- Restrictive named-agent policy is fail-closed. awsl refuses a call if the
   selected adapter cannot express its tools, MCP, or permission restrictions
   without broadening access.
 - `isolation: "worktree"` protects the caller's working tree from ordinary
@@ -34,11 +34,11 @@ mitigation. Do not include live credentials or private provider output.
 State directories are created with mode 0700. State, journal, lock, schema, and
 optional raw-provider files are created with mode 0600.
 
-Raw provider capture is off by default. When explicitly enabled, AWSl applies
+Raw provider capture is off by default. When explicitly enabled, awsl applies
 structural and text redaction, but the resulting diagnostics should still be
 handled as sensitive data.
 
-AWSl does not intentionally persist the full process environment or provider
+awsl does not intentionally persist the full process environment or provider
 credentials. Persistence and JSONL output defensively redact common
 Authorization, Cookie, token, secret, password, credential, signature, API key,
 and AWS credential fields. Redaction is defense in depth, not a substitute for

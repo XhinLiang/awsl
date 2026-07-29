@@ -638,7 +638,7 @@ async function main() {
     await copyFile(agentFixture, join(agentDirectory, "oracle-no-tools.md"));
     await writeFile(
       join(project, "CLAUDE.md"),
-      "# AWSl oracle\n\nRun only the exact requested Workflow tool call.\n",
+      "# awsl oracle\n\nRun only the exact requested Workflow tool call.\n",
       { mode: 0o600 },
     );
     await writeFile(mcpConfig, '{"mcpServers":{}}\n', { mode: 0o600 });

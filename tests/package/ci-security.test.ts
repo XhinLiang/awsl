@@ -38,7 +38,9 @@ test("keeps publication OIDC-only and fail-closed on release identity", async ()
   expect(workflow).toMatch(/contents:\s+read/u);
   expect(workflow).toMatch(/id-token:\s+write/u);
   expect(workflow).toContain("npm@11.5.1");
-  expect(workflow).toContain('case "$package_name" in');
+  expect(workflow).toContain(
+    'if [ "$package_name" != "@xhinliang/awsl" ]; then',
+  );
   expect(workflow).toContain('expected_repository="git+https://github.com/');
   expect(workflow).toContain("security/advisories/new");
   expect(workflow).toContain("latest release");
@@ -53,4 +55,18 @@ test("keeps publication OIDC-only and fail-closed on release identity", async ()
   expect(workflow).not.toMatch(
     /NODE_AUTH_TOKEN|NPM_TOKEN|secrets\.[A-Za-z0-9_]+/u,
   );
+
+  const manifest = JSON.parse(
+    await readFile(join(repositoryRoot, "package.json"), "utf8"),
+  ) as {
+    name?: string;
+    publishConfig?: { access?: string; registry?: string };
+  };
+  expect(manifest).toMatchObject({
+    name: "@xhinliang/awsl",
+    publishConfig: {
+      access: "public",
+      registry: "https://registry.npmjs.org/",
+    },
+  });
 });

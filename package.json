@@ -1,7 +1,7 @@
 {
-  "name": "awsl",
+  "name": "@xhinliang/awsl",
   "version": "0.1.0",
-  "description": "JavaScript workflow runtime with a reviewed Claude Code 2.1.218 compatibility profile",
+  "description": "Agentic Workflow Steering Layer for trusted JavaScript agent workflows",
   "license": "Apache-2.0",
   "author": "xhinliang <xhinliang@gmail.com>",
   "repository": {
@@ -16,6 +16,10 @@
   "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "bin": {
     "awsl": "./dist/cli/main.js"

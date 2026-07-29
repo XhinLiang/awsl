@@ -48,13 +48,10 @@ jobs:
           fi
 
           package_name="$(node -p "require('./package.json').name")"
-          case "$package_name" in
-            @*/*) ;;
-            *)
-              echo "::error::an owned scoped npm package name is required"
-              exit 1
-              ;;
-          esac
+          if [ "$package_name" != "@xhinliang/awsl" ]; then
+            echo "::error::package name must equal @xhinliang/awsl"
+            exit 1
+          fi
 
           repository="$(node -p "const value=require('./package.json').repository; typeof value === 'string' ? value : value?.url ?? ''")"
           expected_repository="git+https://github.com/${GITHUB_REPOSITORY}.git"

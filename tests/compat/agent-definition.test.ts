@@ -187,7 +187,7 @@ describe("agent definitions", () => {
       } as never),
     ).toThrow();
     expect(WORKFLOW_SUBAGENT_SOURCE).toBe(
-      "---\nname: workflow-subagent\ndescription: Default AWSl workflow subagent\n---\nYou are a workflow subagent. Complete the requested task in the provided\nworking directory, follow the inherited project instructions and provider\npolicy, and return the result needed by the parent workflow.\n",
+      "---\nname: workflow-subagent\ndescription: Default awsl workflow subagent\n---\nYou are a workflow subagent. Complete the requested task in the provided\nworking directory, follow the inherited project instructions and provider\npolicy, and return the result needed by the parent workflow.\n",
     );
   });
 

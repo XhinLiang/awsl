@@ -1856,7 +1856,7 @@ throw new Error("root worker exploded")
         ["-C", repo, "config", "user.email", "awsl@example.invalid"],
         { encoding: "utf8" },
       );
-      await execFile("git", ["-C", repo, "config", "user.name", "AWSl Test"], {
+      await execFile("git", ["-C", repo, "config", "user.name", "awsl Test"], {
         encoding: "utf8",
       });
       await writeFile(
@@ -2011,7 +2011,7 @@ return await agent(args.prompt, { isolation: "worktree" })
         ["-C", repo, "config", "user.email", "awsl@example.invalid"],
         { encoding: "utf8" },
       );
-      await execFile("git", ["-C", repo, "config", "user.name", "AWSl Test"], {
+      await execFile("git", ["-C", repo, "config", "user.name", "awsl Test"], {
         encoding: "utf8",
       });
       await writeFile(

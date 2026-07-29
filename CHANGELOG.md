@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Package install smoke tests, an independently authored 19-call orchestration
   profile, a reviewed synthetic 2.1.218-informed replay, and a deterministic
   CycloneDX SBOM.
+- Public npm package identity `@xhinliang/awsl` with the `awsl` executable.
 
 ### Security
 
