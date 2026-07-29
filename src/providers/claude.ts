@@ -48,6 +48,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = Object.freeze({
     denyAll: true,
   }),
   permissionModes: CLAUDE_PERMISSION_MODES,
+  sandboxModes: Object.freeze([]),
   skills: false,
   structuredAttemptEvents: true,
   resolvedModelEvents: true,

@@ -124,6 +124,32 @@ describe("Codex adapter contract", () => {
     ]);
   });
 
+  test("places a validated agent sandbox before exec", async () => {
+    const fixture = fakeRunner(successEvents);
+    const adapter = new CodexAdapter({
+      identity,
+      processRunner: fixture.run,
+    });
+
+    await adapter.run(
+      request({
+        agent: {
+          instructions: "stay focused",
+          name: "restricted",
+          sandboxMode: "workspace-write",
+        },
+      }),
+    );
+
+    expect(fixture.calls[0]?.argv).toEqual([
+      "--sandbox",
+      "workspace-write",
+      "exec",
+      "--json",
+      "-",
+    ]);
+  });
+
   test.each([
     ["configured args", { configuredArgs: ["--model", "evil"] }],
     ["profile", { profile: "../bad" }],
@@ -424,6 +450,7 @@ describe("Codex adapter contract", () => {
         denyAll: false,
       },
       permissionModes: [],
+      sandboxModes: ["read-only", "workspace-write", "danger-full-access"],
       skills: false,
       structuredAttemptEvents: false,
       resolvedModelEvents: false,
@@ -432,6 +459,7 @@ describe("Codex adapter contract", () => {
     expect(Object.isFrozen(CODEX_CAPABILITIES.tools)).toBe(true);
     expect(Object.isFrozen(CODEX_CAPABILITIES.mcp)).toBe(true);
     expect(Object.isFrozen(CODEX_CAPABILITIES.permissionModes)).toBe(true);
+    expect(Object.isFrozen(CODEX_CAPABILITIES.sandboxModes)).toBe(true);
   });
 
   test.each<[string, NegotiatedAgentPolicy]>([
@@ -508,6 +536,16 @@ describe("Codex adapter contract", () => {
       {
         instructions: "stay focused",
         name: 42,
+      },
+      {
+        instructions: "stay focused",
+        name: "restricted",
+        sandboxMode: "unrestricted",
+      },
+      {
+        instructions: "stay focused",
+        name: "restricted",
+        sandboxMode: 1,
       },
     ] as unknown as NegotiatedAgentPolicy[];
 

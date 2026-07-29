@@ -90,6 +90,23 @@ describe("Codex agent definitions", () => {
     ).toThrow(/Codex agent definition is invalid/);
   });
 
+  test.each(["name", "description", "developer_instructions"] as const)(
+    "rejects a whitespace-only required %s field",
+    (field) => {
+      const fields = {
+        name: "agent",
+        description: "display",
+        developer_instructions: "work",
+      };
+      fields[field] = " \t ";
+      expect(() =>
+        parse(
+          `name = "${fields.name}"\ndescription = "${fields.description}"\ndeveloper_instructions = "${fields.developer_instructions}"`,
+        ),
+      ).toThrow(/Codex agent definition is invalid/);
+    },
+  );
+
   test("enforces source hash and UTF-8 size limits", () => {
     const document =
       'name = "agent"\ndescription = "x"\ndeveloper_instructions = "work"';

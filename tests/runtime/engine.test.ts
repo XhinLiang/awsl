@@ -217,6 +217,7 @@ class RecordingProvider implements ProviderAdapter {
     tools: { allowlist: false, denylist: false, denyAll: false },
     mcp: { additive: false, strictReplacement: false, denyAll: false },
     permissionModes: [] as readonly string[],
+    sandboxModes: [] as const,
     skills: false as const,
     structuredAttemptEvents: true,
     resolvedModelEvents: true,

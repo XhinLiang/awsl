@@ -358,6 +358,7 @@ describe("Claude adapter request contract", () => {
         "dontAsk",
         "plan",
       ],
+      sandboxModes: [],
       skills: false,
       structuredAttemptEvents: true,
       resolvedModelEvents: true,
@@ -366,6 +367,7 @@ describe("Claude adapter request contract", () => {
     expect(Object.isFrozen(CLAUDE_CAPABILITIES.tools)).toBe(true);
     expect(Object.isFrozen(CLAUDE_CAPABILITIES.mcp)).toBe(true);
     expect(Object.isFrozen(CLAUDE_CAPABILITIES.permissionModes)).toBe(true);
+    expect(Object.isFrozen(CLAUDE_CAPABILITIES.sandboxModes)).toBe(true);
   });
 
   test("fixes the supplied executable identity", () => {

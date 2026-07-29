@@ -42,7 +42,12 @@ function invalid(): never {
 }
 
 function nonemptyString(value: unknown): string {
-  if (typeof value !== "string" || !value || value.includes("\0")) invalid();
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.includes("\0")
+  )
+    invalid();
   return value;
 }
 
