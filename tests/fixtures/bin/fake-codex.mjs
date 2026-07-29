@@ -16,6 +16,12 @@ if (process.argv.slice(2).includes("--version")) {
 await log("run");
 let prompt = "";
 for await (const chunk of process.stdin) prompt += chunk;
+if (process.env.AWSL_FAKE_CODEX_CAPTURE) {
+  await appendFile(
+    process.env.AWSL_FAKE_CODEX_CAPTURE,
+    `${JSON.stringify({ argv: process.argv.slice(2), prompt })}\n`,
+  );
+}
 const delay = Number(process.env.AWSL_FAKE_CODEX_DELAY_MS ?? 0);
 if (Number.isFinite(delay) && delay > 0)
   await new Promise((resolve) => setTimeout(resolve, delay));
