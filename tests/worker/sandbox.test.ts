@@ -1,4 +1,5 @@
-import { fork } from "node:child_process";
+import { type ChildProcess, fork } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,10 @@ import {
   isPacketData,
   isParentMessage,
 } from "../../src/worker/protocol.js";
+import {
+  type SandboxOptions,
+  executeSandbox,
+} from "../../src/worker/sandbox.js";
 
 function compiled(body: string) {
   return compileWorkflow(
@@ -41,6 +46,90 @@ function expectCode(error: unknown, code: string) {
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function settlement(promise: Promise<unknown>) {
+  let settled = false;
+  void promise.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  return () => settled;
+}
+
+async function flushMicrotasks() {
+  for (let index = 0; index < 4; index += 1) await Promise.resolve();
+}
+
+function runDirectSandbox(
+  body: string,
+  request: SandboxOptions["request"],
+  watchdogMs = 50,
+) {
+  const workflow = compiled(body);
+  return executeSandbox({
+    code: workflow.code,
+    filename: workflow.filename,
+    args: { value: 7 },
+    budget: { total: null, spent: 0 },
+    watchdogMs,
+    request,
+    signal: new AbortController().signal,
+  });
+}
+
+class FakeWorkerChild extends EventEmitter {
+  connected = true;
+  killed = false;
+  stdout = undefined;
+  stderr = undefined;
+
+  constructor(
+    private readonly onSend: (message: unknown, child: FakeWorkerChild) => void,
+  ) {
+    super();
+  }
+
+  send(message: unknown, callback?: (error: Error | null) => void) {
+    this.onSend(message, this);
+    callback?.(null);
+    return true;
+  }
+
+  push(message: unknown) {
+    this.emit("message", message);
+  }
+
+  kill() {
+    if (this.killed) return false;
+    this.killed = true;
+    this.connected = false;
+    this.emit("exit", 0, null);
+    this.emit("close", 0, null);
+    return true;
+  }
+
+  disconnect() {
+    this.connected = false;
+  }
+
+  asChildProcess() {
+    return this as unknown as ChildProcess;
+  }
+}
 
 async function expectFastWorkflowError(pending: Promise<unknown>) {
   const started = Date.now();
@@ -73,10 +162,6 @@ const backpressureWorker = fileURLToPath(
     import.meta.url,
   ),
 );
-const staleWatchdogWorker = fileURLToPath(
-  new URL("../fixtures/workflows/stale-watchdog-worker.cjs", import.meta.url),
-);
-
 describe("VM worker", () => {
   test("accepts packet data only when its JSON UTF-8 wire payload fits", () => {
     const packet = (value: unknown) => ({ type: "result", value });
@@ -370,156 +455,311 @@ describe("VM worker", () => {
 
   test.each([
     {
-      name: "agent",
+      method: "agent" as const,
       body: `return await agent("slow")`,
-      options: {
-        agent: async () => {
-          await delay(400);
-          return { value: "agent-ok" };
-        },
-      },
       expected: "agent-ok",
     },
     {
-      name: "workflow",
+      method: "workflow" as const,
       body: `return await workflow("slow-child")`,
-      options: {
-        workflow: async () => {
-          await delay(400);
-          return { value: "workflow-ok" };
-        },
-      },
       expected: "workflow-ok",
     },
   ])(
-    "pauses the idle watchdog while a slow $name request is active",
-    async ({ body, options, expected }) => {
-      await expect(run(body, { watchdogMs: 250, ...options })).resolves.toBe(
-        expected,
-      );
+    "pauses the sandbox idle watchdog while a $method request is active",
+    async ({ method, body, expected }) => {
+      vi.useFakeTimers();
+      try {
+        const response = deferred<{ value: unknown }>();
+        let requested = false;
+        const pending = runDirectSandbox(body, async (actualMethod) => {
+          expect(actualMethod).toBe(method);
+          requested = true;
+          return response.promise;
+        });
+        const isSettled = settlement(pending);
+        await flushMicrotasks();
+        expect(requested).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(isSettled()).toBe(false);
+
+        response.resolve({ value: expected });
+        await expect(pending).resolves.toBe(expected);
+      } finally {
+        vi.useRealTimers();
+      }
     },
   );
 
-  test("keeps the idle watchdog paused until every concurrent agent request settles", async () => {
-    let calls = 0;
-    await expect(
-      run(
+  test("keeps the sandbox watchdog paused until every concurrent request settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const one = deferred<{ value: unknown }>();
+      const two = deferred<{ value: unknown }>();
+      const requested = new Set<string>();
+      const pending = runDirectSandbox(
         `return await parallel([
           () => agent("one"),
           () => agent("two"),
         ])`,
-        {
-          watchdogMs: 250,
-          agent: async () => {
-            const call = ++calls;
-            await delay(call === 1 ? 300 : 500);
-            return { value: call === 1 ? "one" : "two" };
-          },
+        async (_method, params) => {
+          const prompt = (params as { prompt: string }).prompt;
+          requested.add(prompt);
+          return prompt === "one" ? one.promise : two.promise;
         },
-      ),
-    ).resolves.toEqual(["one", "two"]);
+      );
+      const isSettled = settlement(pending);
+      await flushMicrotasks();
+      expect(requested).toEqual(new Set(["one", "two"]));
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isSettled()).toBe(false);
+      one.resolve({ value: "one" });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isSettled()).toBe(false);
+
+      two.resolve({ value: "two" });
+      await expect(pending).resolves.toEqual(["one", "two"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  test("rearms the idle watchdog after a slow external request settles", async () => {
-    let handlerCompleted = false;
-    let handlerCompletedAt = 0;
-    const error = await run(
-      `await agent("slow");
-       await new Promise(() => {})`,
-      {
-        watchdogMs: 250,
-        agent: async () => {
-          await delay(400);
-          handlerCompleted = true;
-          handlerCompletedAt = Date.now();
-          return { value: "done" };
-        },
-      },
-    ).catch((reason: unknown) => reason);
+  test.each([
+    {
+      name: "resolves",
+      body: `await agent("slow"); await new Promise(() => {})`,
+      settle: (response: ReturnType<typeof deferred<{ value: unknown }>>) =>
+        response.resolve({ value: "done" }),
+    },
+    {
+      name: "rejects",
+      body: `try { await agent("slow") } catch {} await new Promise(() => {})`,
+      settle: (response: ReturnType<typeof deferred<{ value: unknown }>>) =>
+        response.reject(new Error("expected handler failure")),
+    },
+  ])(
+    "rearms the sandbox idle watchdog after an external request $name",
+    async ({ body, settle }) => {
+      vi.useFakeTimers();
+      try {
+        const response = deferred<{ value: unknown }>();
+        let requested = false;
+        const pending = runDirectSandbox(body, async () => {
+          requested = true;
+          return response.promise;
+        });
+        const isSettled = settlement(pending);
+        await flushMicrotasks();
+        expect(requested).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(isSettled()).toBe(false);
 
-    expect(handlerCompleted).toBe(true);
-    expectCode(error, "WORKFLOW_ERROR");
-    expect((error as Error).message).toContain(
-      "workflow wall-clock watchdog exceeded",
-    );
-    expect(Date.now() - handlerCompletedAt).toBeGreaterThanOrEqual(200);
+        settle(response);
+        await flushMicrotasks();
+        await vi.advanceTimersByTimeAsync(49);
+        expect(isSettled()).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        const error = await pending.catch((reason: unknown) => reason);
+        expectCode(error, "WORKFLOW_ERROR");
+        expect((error as Error).message).toContain(
+          "workflow wall-clock watchdog exceeded",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test("pauses the host watchdog until every external handler settles", async () => {
+    vi.useFakeTimers();
+    const agentResponse = deferred<{ value: unknown }>();
+    const workflowResponse = deferred<{ value: unknown }>();
+    const responses = new Set<string>();
+    const fake = new FakeWorkerChild((message, child) => {
+      const packet = message as { type?: string; id?: string };
+      if (packet.type === "start") {
+        child.push({
+          type: "request",
+          id: "1",
+          method: "agent",
+          params: { prompt: "agent", options: {} },
+        });
+        child.push({
+          type: "request",
+          id: "2",
+          method: "workflow",
+          params: { reference: "child" },
+        });
+      } else if (packet.type === "response") {
+        responses.add(packet.id as string);
+        if (responses.size === 2)
+          void Promise.resolve().then(() =>
+            child.push({ type: "result", value: ["agent", "workflow"] }),
+          );
+      } else if (packet.type === "run.abort") {
+        void Promise.resolve().then(() =>
+          child.push({ type: "result", value: null }),
+        );
+      }
+    });
+    const host = new WorkerHost({
+      watchdogMs: 50,
+      abortGraceMs: 10,
+      forkWorker: () => fake.asChildProcess(),
+      agent: async () => agentResponse.promise,
+      workflow: async () => workflowResponse.promise,
+    });
+    try {
+      const pending = host.run({ ...compiled("return null"), args: {} });
+      const isSettled = settlement(pending);
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isSettled()).toBe(false);
+
+      agentResponse.resolve({ value: "agent" });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isSettled()).toBe(false);
+
+      workflowResponse.resolve({ value: "workflow" });
+      await expect(pending).resolves.toEqual(["agent", "workflow"]);
+    } finally {
+      await host.close();
+      vi.useRealTimers();
+    }
   });
 
-  test("rearms the idle watchdog after a slow external request rejects", async () => {
-    let handlerCompleted = false;
-    let handlerCompletedAt = 0;
-    const error = await run(
-      `try {
-         await agent("slow")
-       } catch {}
-       await new Promise(() => {})`,
-      {
-        watchdogMs: 250,
-        agent: async () => {
-          await delay(400);
-          handlerCompleted = true;
-          handlerCompletedAt = Date.now();
-          throw new Error("expected handler failure");
-        },
-      },
-    ).catch((reason: unknown) => reason);
+  test("rearms the host watchdog after an external handler rejects", async () => {
+    vi.useFakeTimers();
+    const agentResponse = deferred<{ value: unknown }>();
+    const fake = new FakeWorkerChild((message, child) => {
+      const packet = message as { type?: string };
+      if (packet.type === "start")
+        child.push({
+          type: "request",
+          id: "1",
+          method: "agent",
+          params: { prompt: "agent", options: {} },
+        });
+      else if (packet.type === "run.abort")
+        void Promise.resolve().then(() =>
+          child.push({ type: "result", value: null }),
+        );
+    });
+    const host = new WorkerHost({
+      watchdogMs: 50,
+      abortGraceMs: 10,
+      forkWorker: () => fake.asChildProcess(),
+      agent: async () => agentResponse.promise,
+    });
+    try {
+      const pending = host.run({ ...compiled("return null"), args: {} });
+      const isSettled = settlement(pending);
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isSettled()).toBe(false);
 
-    expect(handlerCompleted).toBe(true);
-    expectCode(error, "WORKFLOW_ERROR");
-    expect((error as Error).message).toContain(
-      "workflow wall-clock watchdog exceeded",
-    );
-    expect(Date.now() - handlerCompletedAt).toBeGreaterThanOrEqual(200);
+      agentResponse.reject(new Error("expected handler failure"));
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(149);
+      expect(isSettled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).rejects.toSatisfy((error: unknown) => {
+        expectCode(error, "CANCELLED");
+        return true;
+      });
+    } finally {
+      await host.close();
+      vi.useRealTimers();
+    }
   });
 
   test("does not let a stale handler clear the watchdog of a reused host", async () => {
-    let markOldStarted!: () => void;
-    const oldStarted = new Promise<void>((resolve) => {
-      markOldStarted = resolve;
-    });
-    let releaseOld!: () => void;
-    let markNewReady!: () => void;
-    const newReady = new Promise<void>((resolve) => {
-      markNewReady = resolve;
-    });
+    vi.useFakeTimers();
+    const oldHandler = deferred<{ value: unknown }>();
+    const newReady = deferred<void>();
+    let forkCount = 0;
     const host = new WorkerHost({
-      workerPath: staleWatchdogWorker,
-      watchdogMs: 200,
-      abortGraceMs: 25,
-      agent: async (prompt) => {
-        if (prompt === "new") return { value: "new-result" };
-        markOldStarted();
-        return new Promise<{ value: unknown }>((resolve) => {
-          releaseOld = () => resolve({ value: "old-handler-result" });
+      watchdogMs: 50,
+      abortGraceMs: 10,
+      forkWorker: () => {
+        forkCount += 1;
+        const run = forkCount;
+        const fake = new FakeWorkerChild((message, child) => {
+          const packet = message as { type?: string; id?: string };
+          if (packet.type === "start") {
+            if (run === 1) {
+              child.push({
+                type: "request",
+                id: "1",
+                method: "agent",
+                params: { prompt: "old", options: {} },
+              });
+              child.push({ type: "result", value: "old-result" });
+            } else {
+              child.push({
+                type: "request",
+                id: "1",
+                method: "agent",
+                params: { prompt: "new", options: {} },
+              });
+            }
+          } else if (
+            run === 2 &&
+            packet.type === "response" &&
+            packet.id === "1"
+          ) {
+            void Promise.resolve().then(() =>
+              child.push({
+                type: "request",
+                id: "2",
+                method: "phase",
+                params: { title: "new-ready" },
+              }),
+            );
+          } else if (packet.type === "run.abort") {
+            void Promise.resolve().then(() =>
+              child.push({ type: "result", value: null }),
+            );
+          }
         });
+        return fake.asChildProcess();
       },
+      agent: async (prompt) =>
+        prompt === "old" ? oldHandler.promise : { value: "new-result" },
       onPhase: (title) => {
-        if (title === "new-ready") markNewReady();
+        if (title === "new-ready") newReady.resolve();
       },
     });
     try {
-      const first = host.run({
-        ...compiled("return 'fixture-controlled'"),
-        runId: "old-run",
-      });
-      await oldStarted;
-      await expect(first).resolves.toBe("old-result");
+      await expect(
+        host.run({
+          ...compiled("return 'fixture-controlled'"),
+          runId: "old-run",
+        }),
+      ).resolves.toBe("old-result");
 
       const second = host.run({
         ...compiled("return 'fixture-controlled'"),
         runId: "new-run",
       });
-      await newReady;
-      releaseOld();
-      const outcome = await Promise.race([
-        second.catch((error: unknown) => error),
-        delay(700).then(
-          () => new Error("reused host watchdog did not terminate the run"),
-        ),
-      ]);
-      expectCode(outcome, "CANCELLED");
+      const isSettled = settlement(second);
+      await newReady.promise;
+      oldHandler.resolve({ value: "old-handler-result" });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(149);
+      expect(isSettled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(isSettled()).toBe(true);
+      await expect(second).rejects.toSatisfy((error: unknown) => {
+        expectCode(error, "CANCELLED");
+        return true;
+      });
     } finally {
       await host.close();
+      vi.useRealTimers();
     }
   });
 
