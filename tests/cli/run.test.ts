@@ -326,25 +326,12 @@ describe("CLI workflow execution", () => {
       CLAUDE_CONFIG_DIR: claudeConfigDir,
     };
     const cli = cliContext(cwd, env);
-    const previousLog = process.env.AWSL_FAKE_CODEX_LOG;
-    const previousCapture = process.env.AWSL_FAKE_CODEX_CAPTURE;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    process.env.AWSL_FAKE_CODEX_CAPTURE = capture;
-    try {
-      expect(
-        await executeCli(
-          ["run", workflow, "--provider", "codex", "--format", "jsonl"],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previousLog === undefined)
-        process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previousLog;
-      if (previousCapture === undefined)
-        process.env.AWSL_FAKE_CODEX_CAPTURE = undefined;
-      else process.env.AWSL_FAKE_CODEX_CAPTURE = previousCapture;
-    }
+    expect(
+      await executeCli(
+        ["run", workflow, "--provider", "codex", "--format", "jsonl"],
+        cli.context,
+      ),
+    ).toBe(0);
 
     const events = cli
       .output()
@@ -356,19 +343,20 @@ describe("CLI workflow execution", () => {
       data: { status: "completed", result: "FAKE" },
     });
     const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
-    expect(invocation.argv).toEqual(
-      expect.arrayContaining([
-        "-m",
-        "gpt-5.5",
-        "-c",
-        'model_reasoning_effort="xhigh"',
-        "--sandbox",
-        "read-only",
-      ]),
-    );
+    expect(invocation.argv).toEqual([
+      "-m",
+      "gpt-5.5",
+      "-c",
+      'model_reasoning_effort="xhigh"',
+      "--sandbox",
+      "read-only",
+      "exec",
+      "--json",
+      "-",
+    ]);
     expect(invocation.prompt).toContain("CODEX_NATIVE_AUDIT_MARKER");
     expect(invocation.prompt).not.toContain("CLAUDE_FOREIGN_AUDIT_MARKER");
     expect(invocation.argv).not.toContain("claude-opus-foreign");
-    expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+    expect(await readFile(log, "utf8")).toBe("run\n");
   });
 });

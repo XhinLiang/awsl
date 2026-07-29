@@ -34,6 +34,7 @@ import type {
 } from "../core/types.js";
 import { ClaudeAdapter } from "../providers/claude.js";
 import { CodexAdapter } from "../providers/codex.js";
+import { runProviderProcess } from "../providers/process.js";
 import { runWorkflow } from "../runtime/engine.js";
 import { redactJson } from "../store/redact.js";
 import { FileRunStore } from "../store/run-store.js";
@@ -279,6 +280,7 @@ async function lockOwner(): Promise<LockOwner> {
 function adapter(
   config: ResolvedAwslConfig,
   identity: ProviderIdentity,
+  env: NodeJS.ProcessEnv,
 ): ProviderAdapter {
   const selected = config.providers[config.provider];
   return config.provider === "codex"
@@ -288,6 +290,8 @@ function adapter(
         ...(config.providers.codex.profile === undefined
           ? {}
           : { profile: config.providers.codex.profile }),
+        processRunner: async (options) =>
+          runProviderProcess({ ...options, env }),
       })
     : new ClaudeAdapter({
         identity,
@@ -349,7 +353,7 @@ async function prepareRuntime(options: {
     cwd: canonical,
     env: options.context.env,
   });
-  const providerAdapter = adapter(loaded.value, identity);
+  const providerAdapter = adapter(loaded.value, identity, options.context.env);
   const providerPin = await createProviderPin({
     identity,
     config: loaded.value,
