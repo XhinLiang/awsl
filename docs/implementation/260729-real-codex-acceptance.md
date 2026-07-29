@@ -3,7 +3,7 @@
 ## TL;DR
 
 - This record captures successful real Codex acceptance performed on 2026-07-29.
-- Codex CLI `0.145.0` was authenticated and completed both a no-tools round trip and a read-only project-fixture run through the built AWSl CLI.
+- Codex CLI `0.145.0` was authenticated and completed both a no-tools round trip and a read-only project-fixture run through the built awsl CLI.
 - The second run demonstrated a committed file read, current-working-directory context, and inherited project instruction without changing the fixture tree.
 - This is exact-provider evidence for the stated scenarios only. It does not certify hooks, MCP, every permission mode, implicit resolved default-model discovery, or Claude.
 
@@ -19,11 +19,11 @@
 ## Scope and prerequisites
 
 The environment check reported Node `22.20.0`, pnpm `9.15.4`, Codex `0.145.0`,
-and Claude `2.1.218`; Codex login was active. AWSl stored the selected provider
+and Claude `2.1.218`; Codex login was active. awsl stored the selected provider
 pin as provider `codex`, executable version `0.145.0`, and compatibility profile
 `claude-code@2.1.218`.
 
-Each successful command used a canonical isolated AWSl state directory. Its `PATH`
+Each successful command used a canonical isolated awsl state directory. Its `PATH`
 contained only existing absolute entries. Raw provider events were disabled and no
 provider transcript, run identifier, state directory, or executable realpath is
 retained in this repository.

@@ -69,7 +69,7 @@ function configError(error: unknown): boolean {
   );
 }
 
-describe("AWSl behavior fingerprint", () => {
+describe("awsl behavior fingerprint", () => {
   test("is a deterministic lowercase SHA-256 independent of object insertion order", () => {
     const first = config();
     const second = config();
@@ -81,7 +81,7 @@ describe("AWSl behavior fingerprint", () => {
     ) as unknown as ResolvedAwslConfig["providers"];
 
     expect(behavior(first)).toBe(
-      "sha256:58fd212de7243d1476335923df6a8219f8551f2375ff2c7b69d10bead4b156ac",
+      "sha256:18443685b0139e1dc1a20fbbad6c0f9bdf1287cac0b2014d6bf72a34beed3c66",
     );
     expect(behavior(second)).toBe(behavior(first));
   });

@@ -278,7 +278,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
 
     const installedPackage = JSON.parse(
       await readFile(
-        join(project, "node_modules", "awsl", "package.json"),
+        join(project, "node_modules", "@xhinliang", "awsl", "package.json"),
         "utf8",
       ),
     ) as {
@@ -287,6 +287,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
       bugs?: { url?: string };
       engines?: { node?: string };
       homepage?: string;
+      name?: string;
       repository?: { type?: string; url?: string };
     };
     expect(installedPackage.bin?.awsl).toBe("./dist/cli/main.js");
@@ -295,6 +296,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
       author: "xhinliang <xhinliang@gmail.com>",
       bugs: { url: "https://github.com/XhinLiang/awsl/issues" },
       homepage: "https://github.com/XhinLiang/awsl#readme",
+      name: "@xhinliang/awsl",
       repository: {
         type: "git",
         url: "git+https://github.com/XhinLiang/awsl.git",
@@ -320,7 +322,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
       [
         "--input-type=module",
         "--eval",
-        'import("awsl").then((value) => process.stdout.write(value.COMPAT_PROFILE.id))',
+        'import("@xhinliang/awsl").then((value) => process.stdout.write(value.COMPAT_PROFILE.id))',
       ],
       { cwd: project, timeout: 20_000 },
     );

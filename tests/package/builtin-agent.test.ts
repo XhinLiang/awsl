@@ -82,7 +82,7 @@ test("resolves the emitted builtin from an installed package tarball", async () 
         import { dirname, join } from "node:path";
         import { fileURLToPath, pathToFileURL } from "node:url";
 
-        const packageRoot = dirname(dirname(fileURLToPath(import.meta.resolve("awsl"))));
+        const packageRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@xhinliang/awsl"))));
         const { createRegistry } = await import(pathToFileURL(
           join(packageRoot, "dist", "compat", "agent-registry.js"),
         ));
@@ -91,7 +91,7 @@ test("resolves the emitted builtin from an installed package tarball", async () 
         ));
         let deepImportBlocked = false;
         try {
-          await import("awsl/dist/compat/agent-registry.js");
+          await import("@xhinliang/awsl/dist/compat/agent-registry.js");
         } catch (error) {
           deepImportBlocked = error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED";
         }
@@ -142,7 +142,7 @@ test("resolves the emitted builtin from an installed package tarball", async () 
       tier: "builtin",
     });
     expect(result.exportedSource).toContain(
-      "name: workflow-subagent\ndescription: Default AWSl workflow subagent",
+      "name: workflow-subagent\ndescription: Default awsl workflow subagent",
     );
     expect(result.instructions).toBe(
       "You are a workflow subagent. Complete the requested task in the provided\n" +

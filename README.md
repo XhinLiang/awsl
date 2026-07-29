@@ -1,10 +1,14 @@
-# AWSl
+# awsl
 
-AWSl is a standalone runtime and CLI for trusted JavaScript agent workflows. It
-loads a small workflow DSL, schedules Codex or Claude calls, and owns shared
-budgeting, durable resume, Git worktree isolation, events, and redaction. It is
-not a shell wrapper around either provider. Its compatibility target is the
-observable workflow behavior of `claude-code@2.1.218`.
+awsl (Agentic Workflow Steering Layer) is a standalone runtime and CLI for
+trusted JavaScript agent workflows. It loads a small workflow DSL, schedules
+Codex or Claude calls, and owns shared budgeting, durable resume, Git worktree
+isolation, events, and redaction. It is not a shell wrapper around either
+provider. Its compatibility target is the observable workflow behavior of
+`claude-code@2.1.218`.
+
+The name also admits a secondary reading: “AWSL — an alternative to A÷’s
+West-centric Safety Logic.”
 
 The project does not claim byte-for-byte, universal, or future Claude Code
 equivalence. See
@@ -23,6 +27,13 @@ Provider versions are exact compatibility inputs. `awsl doctor` and run
 preparation reject other versions; this release does not claim compatibility
 with later provider versions.
 
+Install from the public npm registry:
+
+```bash
+npm install --global @xhinliang/awsl
+awsl --help
+```
+
 From a source checkout:
 
 ```bash
@@ -32,7 +43,7 @@ pnpm run build
 pnpm awsl --help
 ```
 
-After installing the package, the executable is `awsl`.
+The package name is `@xhinliang/awsl`; the installed executable is `awsl`.
 
 ## Quick start
 
@@ -69,7 +80,7 @@ awsl example.js \
 ```
 
 The default provider is Codex. One provider is pinned for the complete workflow
-tree; AWSl does not fall back from one provider to another during a run.
+tree; awsl does not fall back from one provider to another during a run.
 
 ## CLI
 
@@ -203,10 +214,10 @@ Provider tables accept `executable`, `args`, `default_model`,
 sources, with defensive redaction.
 
 Provider CLIs may apply their own ambient project rules, instructions, hooks,
-MCP configuration, and permission settings. AWSl does not independently
+MCP configuration, and permission settings. awsl does not independently
 reproduce or certify every ambient provider setting. When a requested
 `agentType` policy cannot be expressed by an adapter without broadening its
-permissions, AWSl fails closed.
+permissions, awsl fails closed.
 
 ## Durable state and resume
 
@@ -227,7 +238,7 @@ terminal lock.
 ## Worktrees
 
 `agent(prompt, { isolation: "worktree" })` creates a per-call Git worktree from
-the root run's pinned base. AWSl never merges it into the original worktree.
+the root run's pinned base. awsl never merges it into the original worktree.
 Clean successful worktrees are removed; dirty, failed, or cancelled worktrees
 are retained and reported for inspection.
 
@@ -258,7 +269,7 @@ event types.
 ## Security boundary
 
 Workflow files are trusted code. Provider processes are spawned directly with
-an executable and argument vector, never through a shell. AWSl does not save the
+an executable and argument vector, never through a shell. awsl does not save the
 complete environment or provider credentials. Stored events and JSONL output
 redact common authorization headers, cookies, tokens, passwords, credentials,
 signatures, API keys, and AWS credential fields.
@@ -300,7 +311,8 @@ build; dependency ranges can resolve differently in a later consumer install.
 whose tag exactly matches `v<package version>`. It deliberately fails before
 publication until an authorized maintainer:
 
-- chooses and acquires an owned scoped npm package name;
+- owns the `@xhinliang/awsl` package and keeps the manifest and release gate
+  pinned to that identity;
 - configures that npm package's trusted publisher for `release.yml` with the
   `npm publish` action allowed; and
 - enables repository release immutability or equivalent tag rules and completes
@@ -311,6 +323,6 @@ npm publication token.
 
 ## License
 
-AWSl is licensed under the Apache License 2.0. Public CI uses an independently
+awsl is licensed under the Apache License 2.0. Public CI uses an independently
 authored 19-call orchestration profile. External and vendor fixtures are
 excluded from the repository and release package.

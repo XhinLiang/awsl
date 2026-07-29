@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving AWSl.
+Thank you for improving awsl.
 
 By submitting a contribution, you agree that it may be distributed under the
 Apache License 2.0 and that you have the right to provide it. Do not add

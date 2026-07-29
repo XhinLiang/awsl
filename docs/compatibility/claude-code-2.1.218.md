@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-- AWSl records observable workflow behavior for the pinned Claude Code profile; it does not claim byte-for-byte or future-version compatibility.
+- awsl records observable workflow behavior for the pinned Claude Code profile; it does not claim byte-for-byte or future-version compatibility.
 - An independently authored 19-call fixture exercises public orchestration, phase accounting, event ordering, durable state, and side-effect isolation.
 - Real-provider evidence remains limited to the exact Codex scenarios and versions stated below; authenticated Claude evidence is still absent.
 
@@ -12,7 +12,7 @@
 
 **Overall status:** `partial`
 
-AWSl implements the observable JavaScript workflow behaviors listed below. This
+awsl implements the observable JavaScript workflow behaviors listed below. This
 report does not claim byte-for-byte equivalence, compatibility with future
 Claude Code releases, or equivalence for rows marked `partial` or `gap`.
 
@@ -72,7 +72,7 @@ git diff --check
 
 ## Provider and oracle evidence
 
-AWSl accepts exactly Codex CLI `0.145.0` or `0.146.0` and Claude Code
+awsl accepts exactly Codex CLI `0.145.0` or `0.146.0` and Claude Code
 `2.1.218`. `awsl doctor` and run preparation fail closed for other versions;
 those exact versions are part of this profile rather than a promise about later
 provider releases. The real-provider Codex evidence below remains specific to
@@ -93,10 +93,10 @@ tests, not a claimed real-provider acceptance run.
 | Authenticated Claude Workflow oracle capture | `gap` | `none` | Required command: `AWSL_CAPTURE_CLAUDE_ORACLE=1 node scripts/capture-claude-oracle.mjs`; not run successfully because `claude auth status --json` reported `loggedIn:false` | No live capture exists. The inspected binary digest does not attest that it produced the committed observation. |
 | Oracle capture guardrails | `verified` | `static` | `tests/conformance/oracle-golden.test.ts` — `keeps live Claude oracle capture opt-in and fail-closed`, `rejects a version-spoofing Claude command before executing it` | Capture is opt-in, CI-disabled, Darwin arm64-only, exact-version-only, and binary-digest-only. |
 
-Provider CLIs may apply their own ambient project and user configuration. AWSl
+Provider CLIs may apply their own ambient project and user configuration. awsl
 does not independently reproduce or certify all ambient hooks, MCP servers, or
 permission settings. For named-agent restrictions, the selected adapter must
-express the policy without broadening it or AWSl rejects the call.
+express the policy without broadening it or awsl rejects the call.
 
 ## Release readiness
 
@@ -108,15 +108,15 @@ express the policy without broadening it or AWSl rejects the call.
 | Deterministic CycloneDX 1.6 SBOM | `verified` | `static` | `tests/package/sbom.test.ts` — `generates a deterministic production-only CycloneDX SBOM`; `pnpm run sbom` | The generator records the production lock closure and integrities and is byte-reproducible. Consumer resolution may differ within compatible ranges. |
 | Fail-closed release workflow | `verified` | `static` | `tests/package/ci-security.test.ts` — `keeps publication OIDC-only and fail-closed on release identity`, `pins every GitHub Action to an immutable commit`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The workflow stops before publication until an owned package identity is configured and validates the repository and security-policy identity. |
 | Concrete private vulnerability channel and supported-version policy | `verified` | `host+static` | GitHub private vulnerability reporting is enabled for `XhinLiang/awsl`; `SECURITY.md`; release guard in `.github/workflows/release.yml`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The repository-specific private reporting channel is enabled and the `main`/latest-release support policy is configured. |
-| Owned npm package identity | `gap` | `static` | `npm view awsl name version`; `node -p "require('./package.json').name"` | Unscoped `awsl` is already registered. An authorized owner must choose and acquire a scoped name. |
+| Owned npm package identity | `gap` | `static` | `npm view @xhinliang/awsl name version`; `node -p "require('./package.json').name"` | The manifest and release gate are pinned to `@xhinliang/awsl`; the registry still returns `E404` until the authorized owner completes the first publication. |
 | Public repository metadata and trusted publisher | `partial` | `static` | `package.json` identifies `https://github.com/XhinLiang/awsl`; `.github/workflows/release.yml` validates the runtime repository identity. | Repository metadata is configured. npm trusted publishing and provenance still require an owned scoped package and host-side configuration. |
-| Immutable release tag and published package | `gap` | `none` | `git tag --list` has no release tag; repository release immutability and tag protection require the future host; no authorized scoped package exists to query | No tag or AWSl package has been published. |
+| Immutable release tag and published package | `gap` | `none` | `git tag --list` has no release tag; repository release immutability and tag protection require the future host; `npm view @xhinliang/awsl` returns `E404` | No tag or awsl package has been published. |
 | Hosted CI result for the final revision | `gap` | `none` | `.github/workflows/ci.yml` defines the gate, but no hosted run is recorded in this report. | A hosted run is required for the published revision. |
 
 ## Known gaps
 
 - Codex user-skip and terminal API-error discrimination has no stable public
-  discriminator in Codex `0.145.0`; AWSl fails closed.
+  discriminator in Codex `0.145.0`; awsl fails closed.
 - Retry/stall timing and structured-output retry behavior are bounded and
   tested but not live-oracle certified.
 - Complete custom-agent merge behavior, provider model fallback, and full JSON

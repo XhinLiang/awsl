@@ -38,7 +38,7 @@ async function fixture() {
   await mkdir(runDir, { recursive: true });
   await git(repo, "init");
   await git(repo, "config", "user.email", "awsl@example.invalid");
-  await git(repo, "config", "user.name", "AWSl Test");
+  await git(repo, "config", "user.name", "awsl Test");
   await writeFile(join(repo, "README.md"), "base\n");
   await writeFile(join(nested, "tracked.txt"), "tracked\n");
   await git(repo, "add", ".");

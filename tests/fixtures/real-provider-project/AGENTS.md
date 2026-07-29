@@ -1,4 +1,4 @@
-# AWSl real-provider fixture
+# awsl real-provider fixture
 
 For this directory, the project instruction marker is
 `AWSL_PROJECT_INSTRUCTION_CODEX_V1`.

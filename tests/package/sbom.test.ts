@@ -73,11 +73,11 @@ test("generates a deterministic production-only CycloneDX SBOM", async () => {
       version: 1,
       metadata: {
         component: {
-          "bom-ref": "pkg:npm/awsl@0.1.0",
+          "bom-ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
           type: "application",
-          name: "awsl",
+          name: "@xhinliang/awsl",
           version: "0.1.0",
-          purl: "pkg:npm/awsl@0.1.0",
+          purl: "pkg:npm/%40xhinliang/awsl@0.1.0",
           licenses: [{ license: { id: "Apache-2.0" } }],
         },
         properties: [

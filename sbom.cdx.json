@@ -4,11 +4,11 @@
   "version": 1,
   "metadata": {
     "component": {
-      "bom-ref": "pkg:npm/awsl@0.1.0",
+      "bom-ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
       "type": "application",
-      "name": "awsl",
+      "name": "@xhinliang/awsl",
       "version": "0.1.0",
-      "purl": "pkg:npm/awsl@0.1.0",
+      "purl": "pkg:npm/%40xhinliang/awsl@0.1.0",
       "licenses": [
         {
           "license": {
@@ -171,6 +171,18 @@
   ],
   "dependencies": [
     {
+      "ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
+      "dependsOn": [
+        "pkg:npm/acorn-walk@8.3.5",
+        "pkg:npm/acorn@8.17.0",
+        "pkg:npm/ajv-formats@3.0.1",
+        "pkg:npm/ajv@8.20.0",
+        "pkg:npm/commander@13.1.0",
+        "pkg:npm/smol-toml@1.7.1",
+        "pkg:npm/yaml@2.9.0"
+      ]
+    },
+    {
       "ref": "pkg:npm/acorn-walk@8.3.5",
       "dependsOn": [
         "pkg:npm/acorn@8.17.0"
@@ -193,18 +205,6 @@
         "pkg:npm/fast-uri@3.1.4",
         "pkg:npm/json-schema-traverse@1.0.0",
         "pkg:npm/require-from-string@2.0.2"
-      ]
-    },
-    {
-      "ref": "pkg:npm/awsl@0.1.0",
-      "dependsOn": [
-        "pkg:npm/acorn-walk@8.3.5",
-        "pkg:npm/acorn@8.17.0",
-        "pkg:npm/ajv-formats@3.0.1",
-        "pkg:npm/ajv@8.20.0",
-        "pkg:npm/commander@13.1.0",
-        "pkg:npm/smol-toml@1.7.1",
-        "pkg:npm/yaml@2.9.0"
       ]
     },
     {

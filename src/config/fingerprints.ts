@@ -238,21 +238,21 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
 
 function resolvedConfig(value: unknown): ResolvedAwslConfig {
   const input = record(
-    snapshot(value, "resolved AWSl config"),
-    "resolved AWSl config",
+    snapshot(value, "resolved awsl config"),
+    "resolved awsl config",
   );
-  exactKeys(input, TOP_KEYS, [], "resolved AWSl config");
+  exactKeys(input, TOP_KEYS, [], "resolved awsl config");
   if (input.provider !== "codex" && input.provider !== "claude")
-    configError("resolved AWSl provider is invalid");
+    configError("resolved awsl provider is invalid");
   if (typeof input.rawProviderEvents !== "boolean")
-    configError("resolved AWSl rawProviderEvents is invalid");
-  const providers = record(input.providers, "resolved AWSl providers");
-  exactKeys(providers, ["codex", "claude"], [], "resolved AWSl providers");
-  const registry = record(input.registry, "resolved AWSl registry");
-  exactKeys(registry, ["pluginDirs"], [], "resolved AWSl registry");
+    configError("resolved awsl rawProviderEvents is invalid");
+  const providers = record(input.providers, "resolved awsl providers");
+  exactKeys(providers, ["codex", "claude"], [], "resolved awsl providers");
+  const registry = record(input.registry, "resolved awsl registry");
+  exactKeys(registry, ["pluginDirs"], [], "resolved awsl registry");
   return Object.freeze({
     provider: input.provider,
-    stateDir: absoluteLexicalPath(input.stateDir, "resolved AWSl stateDir"),
+    stateDir: absoluteLexicalPath(input.stateDir, "resolved awsl stateDir"),
     rawProviderEvents: input.rawProviderEvents,
     providers: Object.freeze({
       codex: providerConfig(providers.codex, "codex"),
@@ -261,7 +261,7 @@ function resolvedConfig(value: unknown): ResolvedAwslConfig {
     registry: Object.freeze({
       pluginDirs: stringArray(
         registry.pluginDirs,
-        "resolved AWSl registry pluginDirs",
+        "resolved awsl registry pluginDirs",
         true,
       ),
     }),
@@ -310,14 +310,14 @@ export function awslBehaviorFingerprint(
   value: AwslBehaviorFingerprintInput,
 ): `sha256:${string}` {
   const captured = record(
-    snapshot(value, "AWSl behavior fingerprint input"),
-    "AWSl behavior fingerprint input",
+    snapshot(value, "awsl behavior fingerprint input"),
+    "awsl behavior fingerprint input",
   );
   exactKeys(
     captured,
     ["config"],
     ["enabledPluginRoots"],
-    "AWSl behavior fingerprint input",
+    "awsl behavior fingerprint input",
   );
   const config = resolvedConfig(captured.config);
   const roots = enabledRoots(captured.enabledPluginRoots);
