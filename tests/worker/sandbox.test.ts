@@ -365,6 +365,108 @@ describe("VM worker", () => {
     await host.close();
   });
 
+  test.each([
+    {
+      name: "agent",
+      body: `return await agent("slow")`,
+      options: {
+        agent: async () => {
+          await delay(120);
+          return { value: "agent-ok" };
+        },
+      },
+      expected: "agent-ok",
+    },
+    {
+      name: "workflow",
+      body: `return await workflow("slow-child")`,
+      options: {
+        workflow: async () => {
+          await delay(120);
+          return { value: "workflow-ok" };
+        },
+      },
+      expected: "workflow-ok",
+    },
+  ])(
+    "pauses the idle watchdog while a slow $name request is active",
+    async ({ body, options, expected }) => {
+      await expect(run(body, { watchdogMs: 40, ...options })).resolves.toBe(
+        expected,
+      );
+    },
+  );
+
+  test("keeps the idle watchdog paused until every concurrent agent request settles", async () => {
+    let calls = 0;
+    await expect(
+      run(
+        `return await parallel([
+          () => agent("one"),
+          () => agent("two"),
+        ])`,
+        {
+          watchdogMs: 40,
+          agent: async () => {
+            const call = ++calls;
+            await delay(call === 1 ? 80 : 140);
+            return { value: call === 1 ? "one" : "two" };
+          },
+        },
+      ),
+    ).resolves.toEqual(["one", "two"]);
+  });
+
+  test("rearms the idle watchdog after a slow external request settles", async () => {
+    let handlerCompleted = false;
+    const started = Date.now();
+    const error = await run(
+      `await agent("slow");
+       await new Promise(() => {})`,
+      {
+        watchdogMs: 40,
+        agent: async () => {
+          await delay(100);
+          handlerCompleted = true;
+          return { value: "done" };
+        },
+      },
+    ).catch((reason: unknown) => reason);
+
+    expect(handlerCompleted).toBe(true);
+    expectCode(error, "WORKFLOW_ERROR");
+    expect((error as Error).message).toContain(
+      "workflow wall-clock watchdog exceeded",
+    );
+    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+  });
+
+  test("rearms the idle watchdog after a slow external request rejects", async () => {
+    let handlerCompleted = false;
+    const started = Date.now();
+    const error = await run(
+      `try {
+         await agent("slow")
+       } catch {}
+       await new Promise(() => {})`,
+      {
+        watchdogMs: 40,
+        agent: async () => {
+          await delay(100);
+          handlerCompleted = true;
+          throw new Error("expected handler failure");
+        },
+      },
+    ).catch((reason: unknown) => reason);
+
+    expect(handlerCompleted).toBe(true);
+    expectCode(error, "WORKFLOW_ERROR");
+    expect((error as Error).message).toContain(
+      "workflow wall-clock watchdog exceeded",
+    );
+    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+  });
+
   test("cancels a synchronous infinite worker after the abort grace period", async () => {
     const host = new WorkerHost({
       scriptTimeoutMs: 10_000,

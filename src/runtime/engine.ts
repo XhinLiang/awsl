@@ -1746,7 +1746,7 @@ export async function runWorkflow(
   } catch (error) {
     if (!terminalEligible || terminalCommitted) throw error;
     const normalized = normalizeError(error, context);
-    if (normalized.code === "CANCELLED") abort();
+    abort();
     await drainOperations(context);
     await context.notificationTail.catch(() => undefined);
     const status: RunStatus =

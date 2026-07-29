@@ -114,6 +114,7 @@ export class WorkerHost {
     reject: (reason: unknown) => void;
   };
   #watchdog?: ReturnType<typeof setTimeout>;
+  #watchdogGeneration = 0;
   #abortTimer?: ReturnType<typeof setTimeout>;
   #aborting = false;
   #poisoned = false;
@@ -121,6 +122,7 @@ export class WorkerHost {
   #abortError?: AwslError;
   #activeRun?: Promise<unknown>;
   #inflight = new Set<string>();
+  #watchdogSuspensions = new Set<string>();
   #agentCalls = 0;
   constructor(options: WorkerHostOptions = {}) {
     for (const [name, value] of Object.entries({
@@ -216,6 +218,7 @@ export class WorkerHost {
     });
     this.#child = child;
     this.#inflight.clear();
+    this.#watchdogSuspensions.clear();
     this.#agentCalls = 0;
     let childExited = false;
     let resolveChildExit: (() => void) | undefined;
@@ -237,11 +240,11 @@ export class WorkerHost {
       const finish = (error?: unknown, value?: unknown) => {
         if (settled) return;
         settled = true;
-        if (this.#watchdog) clearTimeout(this.#watchdog);
+        this.#clearWatchdog();
         if (this.#abortTimer) clearTimeout(this.#abortTimer);
-        this.#watchdog = undefined;
         this.#abortTimer = undefined;
         this.#settle = undefined;
+        this.#watchdogSuspensions.clear();
         void (async () => {
           if (!childExited)
             await new Promise<void>((done) => {
@@ -306,10 +309,7 @@ export class WorkerHost {
         "message",
         (message: ChildMessage) => void this.#onMessage(child, message),
       );
-      this.#watchdog = setTimeout(
-        () => this.abort(),
-        (this.options.watchdogMs ?? 30_000) + 100,
-      );
+      this.#armWatchdog(child);
       this.#send({
         type: "start",
         runId: run.runId ?? "run",
@@ -344,6 +344,7 @@ export class WorkerHost {
       );
     this.#aborting = true;
     this.#poisoned = true;
+    this.#clearWatchdog();
     this.#abortError = error
       ? errorFrom(error.toJSON())
       : new AwslError("CANCELLED", "workflow run cancelled", {
@@ -470,90 +471,133 @@ export class WorkerHost {
     }
     this.#inflight.add(message.id);
     if (message.method === "agent") this.#agentCalls += 1;
-    let response: WorkerResponse;
+    const suspendsWatchdog =
+      message.method === "agent" || message.method === "workflow";
+    if (suspendsWatchdog) {
+      this.#watchdogSuspensions.add(message.id);
+      this.#clearWatchdog();
+    }
     try {
-      if (message.method === "agent") {
-        const p = message.params as {
-          prompt: string;
-          options: Record<string, unknown>;
-        };
-        if (!this.options.agent)
-          throw new TypeError("agent handler is not configured");
-        const output = handlerResult(
-          await this.options.agent(p.prompt, p.options),
-        );
+      let response: WorkerResponse;
+      try {
+        if (message.method === "agent") {
+          const p = message.params as {
+            prompt: string;
+            options: Record<string, unknown>;
+          };
+          if (!this.options.agent)
+            throw new TypeError("agent handler is not configured");
+          const output = handlerResult(
+            await this.options.agent(p.prompt, p.options),
+          );
+          if (this.#child !== child || this.#aborting) return;
+          const value = output.value;
+          if (output.budget) this.#acceptResponseBudget(output.budget);
+          response = {
+            type: "response",
+            id: message.id,
+            ok: true,
+            value,
+            budget: { ...this.#budget },
+          };
+        } else if (message.method === "workflow") {
+          const p = message.params as { reference: unknown; args: unknown };
+          if (!this.options.workflow)
+            throw new TypeError("workflow handler is not configured");
+          const output = handlerResult(
+            await this.options.workflow(p.reference, p.args),
+          );
+          if (this.#child !== child || this.#aborting) return;
+          const value = output.value;
+          if (output.budget) this.#acceptResponseBudget(output.budget);
+          response = {
+            type: "response",
+            id: message.id,
+            ok: true,
+            value,
+            budget: { ...this.#budget },
+          };
+        } else if (message.method === "phase") {
+          this.options.onPhase?.((message.params as { title: string }).title);
+          response = {
+            type: "response",
+            id: message.id,
+            ok: true,
+            value: null,
+            budget: { ...this.#budget },
+          };
+        } else {
+          const p = message.params as { message: string; level?: string };
+          this.options.onLog?.(p.message, p.level ?? "info");
+          response = {
+            type: "response",
+            id: message.id,
+            ok: true,
+            value: null,
+            budget: { ...this.#budget },
+          };
+        }
         if (this.#child !== child || this.#aborting) return;
-        const value = output.value;
-        if (output.budget) this.#acceptResponseBudget(output.budget);
-        response = {
-          type: "response",
-          id: message.id,
-          ok: true,
-          value,
-          budget: { ...this.#budget },
-        };
-      } else if (message.method === "workflow") {
-        const p = message.params as { reference: unknown; args: unknown };
-        if (!this.options.workflow)
-          throw new TypeError("workflow handler is not configured");
-        const output = handlerResult(
-          await this.options.workflow(p.reference, p.args),
-        );
+        this.options.onBudget?.({ ...response.budget });
+        this.#sendChild(child, {
+          type: "budget.updated",
+          budget: response.budget,
+        });
+      } catch (error) {
         if (this.#child !== child || this.#aborting) return;
-        const value = output.value;
-        if (output.budget) this.#acceptResponseBudget(output.budget);
         response = {
           type: "response",
           id: message.id,
-          ok: true,
-          value,
-          budget: { ...this.#budget },
-        };
-      } else if (message.method === "phase") {
-        this.options.onPhase?.((message.params as { title: string }).title);
-        response = {
-          type: "response",
-          id: message.id,
-          ok: true,
-          value: null,
-          budget: { ...this.#budget },
-        };
-      } else {
-        const p = message.params as { message: string; level?: string };
-        this.options.onLog?.(p.message, p.level ?? "info");
-        response = {
-          type: "response",
-          id: message.id,
-          ok: true,
-          value: null,
+          ok: false,
+          error:
+            error instanceof AwslError
+              ? error.toJSON()
+              : new AwslError(
+                  "WORKFLOW_ERROR",
+                  error instanceof Error ? error.message : String(error),
+                  { recoverable: false, cause: error },
+                ).toJSON(),
           budget: { ...this.#budget },
         };
       }
-      if (this.#child !== child || this.#aborting) return;
-      this.options.onBudget?.({ ...response.budget });
-      this.#sendChild(child, {
-        type: "budget.updated",
-        budget: response.budget,
-      });
-    } catch (error) {
-      if (this.#child !== child || this.#aborting) return;
-      response = {
-        type: "response",
-        id: message.id,
-        ok: false,
-        error:
-          error instanceof AwslError
-            ? error.toJSON()
-            : new AwslError(
-                "WORKFLOW_ERROR",
-                error instanceof Error ? error.message : String(error),
-                { recoverable: false, cause: error },
-              ).toJSON(),
-        budget: { ...this.#budget },
-      };
+      this.#sendChild(child, response);
+    } finally {
+      this.#inflight.delete(message.id);
+      if (suspendsWatchdog) {
+        this.#watchdogSuspensions.delete(message.id);
+        this.#armWatchdog(child);
+      }
     }
-    this.#inflight.delete(message.id);
-    this.#sendChild(child, response);
+  }
+  #clearWatchdog() {
+    this.#watchdogGeneration += 1;
+    if (this.#watchdog) clearTimeout(this.#watchdog);
+    this.#watchdog = undefined;
+  }
+  #armWatchdog(child: ChildProcess) {
+    this.#clearWatchdog();
+    if (
+      this.#child !== child ||
+      !this.#settle ||
+      this.#aborting ||
+      this.#watchdogSuspensions.size > 0
+    )
+      return;
+    const generation = this.#watchdogGeneration;
+    this.#watchdog = setTimeout(
+      () => {
+        if (
+          generation !== this.#watchdogGeneration ||
+          this.#child !== child ||
+          !this.#settle ||
+          this.#aborting ||
+          this.#watchdogSuspensions.size > 0
+        )
+          return;
+        this.abort();
+      },
+      (this.options.watchdogMs ?? 30_000) + 100,
+    );
   }
   #failClosed(child: ChildProcess, message: string) {
     if (this.#child !== child) return;
