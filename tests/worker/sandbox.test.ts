@@ -73,6 +73,9 @@ const backpressureWorker = fileURLToPath(
     import.meta.url,
   ),
 );
+const staleWatchdogWorker = fileURLToPath(
+  new URL("../fixtures/workflows/stale-watchdog-worker.cjs", import.meta.url),
+);
 
 describe("VM worker", () => {
   test("accepts packet data only when its JSON UTF-8 wire payload fits", () => {
@@ -371,7 +374,7 @@ describe("VM worker", () => {
       body: `return await agent("slow")`,
       options: {
         agent: async () => {
-          await delay(120);
+          await delay(400);
           return { value: "agent-ok" };
         },
       },
@@ -382,7 +385,7 @@ describe("VM worker", () => {
       body: `return await workflow("slow-child")`,
       options: {
         workflow: async () => {
-          await delay(120);
+          await delay(400);
           return { value: "workflow-ok" };
         },
       },
@@ -391,7 +394,7 @@ describe("VM worker", () => {
   ])(
     "pauses the idle watchdog while a slow $name request is active",
     async ({ body, options, expected }) => {
-      await expect(run(body, { watchdogMs: 40, ...options })).resolves.toBe(
+      await expect(run(body, { watchdogMs: 250, ...options })).resolves.toBe(
         expected,
       );
     },
@@ -406,10 +409,10 @@ describe("VM worker", () => {
           () => agent("two"),
         ])`,
         {
-          watchdogMs: 40,
+          watchdogMs: 250,
           agent: async () => {
             const call = ++calls;
-            await delay(call === 1 ? 80 : 140);
+            await delay(call === 1 ? 300 : 500);
             return { value: call === 1 ? "one" : "two" };
           },
         },
@@ -419,15 +422,16 @@ describe("VM worker", () => {
 
   test("rearms the idle watchdog after a slow external request settles", async () => {
     let handlerCompleted = false;
-    const started = Date.now();
+    let handlerCompletedAt = 0;
     const error = await run(
       `await agent("slow");
        await new Promise(() => {})`,
       {
-        watchdogMs: 40,
+        watchdogMs: 250,
         agent: async () => {
-          await delay(100);
+          await delay(400);
           handlerCompleted = true;
+          handlerCompletedAt = Date.now();
           return { value: "done" };
         },
       },
@@ -438,22 +442,23 @@ describe("VM worker", () => {
     expect((error as Error).message).toContain(
       "workflow wall-clock watchdog exceeded",
     );
-    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+    expect(Date.now() - handlerCompletedAt).toBeGreaterThanOrEqual(200);
   });
 
   test("rearms the idle watchdog after a slow external request rejects", async () => {
     let handlerCompleted = false;
-    const started = Date.now();
+    let handlerCompletedAt = 0;
     const error = await run(
       `try {
          await agent("slow")
        } catch {}
        await new Promise(() => {})`,
       {
-        watchdogMs: 40,
+        watchdogMs: 250,
         agent: async () => {
-          await delay(100);
+          await delay(400);
           handlerCompleted = true;
+          handlerCompletedAt = Date.now();
           throw new Error("expected handler failure");
         },
       },
@@ -464,7 +469,58 @@ describe("VM worker", () => {
     expect((error as Error).message).toContain(
       "workflow wall-clock watchdog exceeded",
     );
-    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+    expect(Date.now() - handlerCompletedAt).toBeGreaterThanOrEqual(200);
+  });
+
+  test("does not let a stale handler clear the watchdog of a reused host", async () => {
+    let markOldStarted!: () => void;
+    const oldStarted = new Promise<void>((resolve) => {
+      markOldStarted = resolve;
+    });
+    let releaseOld!: () => void;
+    let markNewReady!: () => void;
+    const newReady = new Promise<void>((resolve) => {
+      markNewReady = resolve;
+    });
+    const host = new WorkerHost({
+      workerPath: staleWatchdogWorker,
+      watchdogMs: 200,
+      abortGraceMs: 25,
+      agent: async (prompt) => {
+        if (prompt === "new") return { value: "new-result" };
+        markOldStarted();
+        return new Promise<{ value: unknown }>((resolve) => {
+          releaseOld = () => resolve({ value: "old-handler-result" });
+        });
+      },
+      onPhase: (title) => {
+        if (title === "new-ready") markNewReady();
+      },
+    });
+    try {
+      const first = host.run({
+        ...compiled("return 'fixture-controlled'"),
+        runId: "old-run",
+      });
+      await oldStarted;
+      await expect(first).resolves.toBe("old-result");
+
+      const second = host.run({
+        ...compiled("return 'fixture-controlled'"),
+        runId: "new-run",
+      });
+      await newReady;
+      releaseOld();
+      const outcome = await Promise.race([
+        second.catch((error: unknown) => error),
+        delay(700).then(
+          () => new Error("reused host watchdog did not terminate the run"),
+        ),
+      ]);
+      expectCode(outcome, "CANCELLED");
+    } finally {
+      await host.close();
+    }
   });
 
   test("cancels a synchronous infinite worker after the abort grace period", async () => {

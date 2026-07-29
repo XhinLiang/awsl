@@ -562,10 +562,12 @@ export class WorkerHost {
       }
       this.#sendChild(child, response);
     } finally {
-      this.#inflight.delete(message.id);
-      if (suspendsWatchdog) {
-        this.#watchdogSuspensions.delete(message.id);
-        this.#armWatchdog(child);
+      if (this.#child === child) {
+        this.#inflight.delete(message.id);
+        if (suspendsWatchdog) {
+          this.#watchdogSuspensions.delete(message.id);
+          this.#armWatchdog(child);
+        }
       }
     }
   }
@@ -575,13 +577,9 @@ export class WorkerHost {
     this.#watchdog = undefined;
   }
   #armWatchdog(child: ChildProcess) {
+    if (this.#child !== child) return;
     this.#clearWatchdog();
-    if (
-      this.#child !== child ||
-      !this.#settle ||
-      this.#aborting ||
-      this.#watchdogSuspensions.size > 0
-    )
+    if (!this.#settle || this.#aborting || this.#watchdogSuspensions.size > 0)
       return;
     const generation = this.#watchdogGeneration;
     this.#watchdog = setTimeout(
