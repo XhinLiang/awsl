@@ -586,7 +586,7 @@ test("keeps live Claude oracle capture opt-in and fail-closed", async () => {
   );
 });
 
-test("rejects a version-spoofing Claude command before executing it", async () => {
+test("rejects an unsupported or unapproved Claude command before executing it", async () => {
   const sandbox = await realpath(
     await mkdtemp(join(tmpdir(), "awsl-oracle-spoof-")),
   );
@@ -611,7 +611,9 @@ test("rejects a version-spoofing Claude command before executing it", async () =
     }).catch((error: unknown) => error as { stderr?: string; stdout?: string });
     expect(result.stdout ?? "").toBe("");
     expect(result.stderr ?? "").toContain(
-      "Claude executable digest is not approved",
+      process.platform === "darwin" && process.arch === "arm64"
+        ? "Claude executable digest is not approved"
+        : "Claude oracle capture is unsupported on this platform",
     );
     await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(goldenPath)).toEqual(before);

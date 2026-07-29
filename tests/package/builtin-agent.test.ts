@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +25,10 @@ const repositoryRoot = dirname(
 );
 
 test("resolves the emitted builtin from an installed package tarball", async () => {
+  const rootPackage = JSON.parse(
+    await readFile(join(repositoryRoot, "package.json"), "utf8"),
+  ) as { packageManager?: string };
+  expect(rootPackage.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/u);
   const root = await mkdtemp(join(tmpdir(), "awsl-packed-builtin-"));
   const packDirectory = join(root, "pack");
   const packSource = join(root, "source");
@@ -30,8 +41,20 @@ test("resolves the emitted builtin from an installed package tarball", async () 
   });
   await writeFile(
     join(project, "package.json"),
-    '{"name":"packed-builtin-smoke","private":true,"type":"module"}\n',
+    `${JSON.stringify({
+      name: "packed-builtin-smoke",
+      private: true,
+      type: "module",
+      packageManager: rootPackage.packageManager,
+    })}\n`,
   );
+  expect(
+    (
+      JSON.parse(await readFile(join(project, "package.json"), "utf8")) as {
+        packageManager?: string;
+      }
+    ).packageManager,
+  ).toBe(rootPackage.packageManager);
 
   try {
     const liveDistBeforePack = await snapshotTree(join(repositoryRoot, "dist"));

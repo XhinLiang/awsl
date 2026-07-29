@@ -99,6 +99,10 @@ async function runInstalled(
 }
 
 test("packed CLI installs and runs from a clean directory", async () => {
+  const rootPackage = JSON.parse(
+    await readFile(join(repositoryRoot, "package.json"), "utf8"),
+  ) as { packageManager?: string };
+  expect(rootPackage.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/u);
   const root = await realpath(
     await mkdtemp(join(tmpdir(), "awsl-install-smoke-")),
   );
@@ -122,8 +126,20 @@ test("packed CLI installs and runs from a clean directory", async () => {
   await chmod(fakeCodex, 0o700);
   await writeFile(
     join(project, "package.json"),
-    '{"name":"awsl-install-smoke","private":true,"type":"module"}\n',
+    `${JSON.stringify({
+      name: "awsl-install-smoke",
+      private: true,
+      type: "module",
+      packageManager: rootPackage.packageManager,
+    })}\n`,
   );
+  expect(
+    (
+      JSON.parse(await readFile(join(project, "package.json"), "utf8")) as {
+        packageManager?: string;
+      }
+    ).packageManager,
+  ).toBe(rootPackage.packageManager);
   await writeFile(
     join(project, "smoke.js"),
     "export const meta = { name: 'package-smoke', description: 'package smoke' }\n" +
