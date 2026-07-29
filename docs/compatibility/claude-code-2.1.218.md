@@ -8,7 +8,7 @@
 
 **Profile:** `claude-code@2.1.218`
 
-**Report date:** 2026-07-29
+**Report date:** 2026-07-30
 
 **Overall status:** `partial`
 
@@ -29,6 +29,7 @@ Evidence types:
   public protocol was invoked.
 - `synthetic-oracle`: replay against a reviewed, digest-locked expected
   observation; this is not a live Claude capture.
+- `host`: public package-registry or repository control-plane evidence.
 - `static`: parser, unit, integration, package, source, or configuration
   evidence that did not invoke a real model provider.
 - `none`: no supporting execution evidence exists; the pointer records the
@@ -106,12 +107,12 @@ express the policy without broadening it or awsl rejects the call.
 | Installable allowlisted tarball | `verified` | `static` | `tests/package/install-smoke.test.ts` — `packed CLI installs and runs from a clean directory`; `pnpm run test:package` | The test rejects source, tests, lockfiles, secrets, unexpected paths, and embedded source content, then installs and runs in a clean project. |
 | Installer-visible security and compatibility documentation | `verified` | `static` | `tests/package/install-smoke.test.ts` — `packed CLI installs and runs from a clean directory`; `pnpm pack --pack-destination <temporary-directory>` | The tarball contains `SECURITY.md`, this report, `CHANGELOG.md`, and the generated SBOM. |
 | Deterministic CycloneDX 1.6 SBOM | `verified` | `static` | `tests/package/sbom.test.ts` — `generates a deterministic production-only CycloneDX SBOM`; `pnpm run sbom` | The generator records the production lock closure and integrities and is byte-reproducible. Consumer resolution may differ within compatible ranges. |
-| Fail-closed release workflow | `verified` | `static` | `tests/package/ci-security.test.ts` — `keeps publication OIDC-only and fail-closed on release identity`, `pins every GitHub Action to an immutable commit`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The workflow stops before publication until an owned package identity is configured and validates the repository and security-policy identity. |
+| Fail-closed release workflow | `verified` | `static` | `tests/package/ci-security.test.ts` — `keeps publication OIDC-only and fail-closed on release identity`, `pins every GitHub Action to an immutable commit`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The workflow pins `@xhinliang/awsl`, repository, tag, commit, and security-policy identity, then publishes only through GitHub OIDC. |
 | Concrete private vulnerability channel and supported-version policy | `verified` | `host+static` | GitHub private vulnerability reporting is enabled for `XhinLiang/awsl`; `SECURITY.md`; release guard in `.github/workflows/release.yml`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The repository-specific private reporting channel is enabled and the `main`/latest-release support policy is configured. |
-| Owned npm package identity | `gap` | `static` | `npm view @xhinliang/awsl name version`; `node -p "require('./package.json').name"` | The manifest and release gate are pinned to `@xhinliang/awsl`; the registry still returns `E404` until the authorized owner completes the first publication. |
-| Public repository metadata and trusted publisher | `partial` | `static` | `package.json` identifies `https://github.com/XhinLiang/awsl`; `.github/workflows/release.yml` validates the runtime repository identity. | Repository metadata is configured. npm trusted publishing and provenance still require an owned scoped package and host-side configuration. |
-| Immutable release tag and published package | `gap` | `none` | `git tag --list` has no release tag; repository release immutability and tag protection require the future host; `npm view @xhinliang/awsl` returns `E404` | No tag or awsl package has been published. |
-| Hosted CI result for the final revision | `gap` | `none` | `.github/workflows/ci.yml` defines the gate, but no hosted run is recorded in this report. | A hosted run is required for the published revision. |
+| Owned npm package identity | `verified` | `host+static` | `npm view @xhinliang/awsl@0.0.0-bootstrap.0 name version`; `node -p "require('./package.json').name"` | The public package is owned by `xhinliang`; the bootstrap version establishes the scoped identity without being the intended stable release. |
+| Public repository metadata and trusted publisher | `verified` | `host+static` | `package.json`; `.github/workflows/release.yml`; npm trusted publisher `ff94bc53-3070-4e61-a7d0-eccb9b93a43c` | The publisher is restricted to `XhinLiang/awsl`, workflow `release.yml`, and the `npm publish` action. |
+| Immutable release tag and published package | `partial` | `host` | GitHub immutable releases are enabled; `npm view @xhinliang/awsl@0.0.0-bootstrap.0`; `git tag --list` | The bootstrap package exists; the stable `v0.1.0` tag and package must still be created and verified. |
+| Hosted CI result for the final revision | `partial` | `host+static` | GitHub Actions run `30468070423` at `218114f`; `.github/workflows/release.yml` | The scoped-package change passed Ubuntu and macOS; the final release commit and release job must pass before publication. |
 
 ## Known gaps
 
