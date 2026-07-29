@@ -197,6 +197,8 @@ function snapshotAgentPolicy(
   const skills = agent.skills;
   if (skillsPresent && (!Array.isArray(skills) || skills.length !== 0))
     throw compatibilityError("Claude cannot preserve agent skills");
+  if (Object.hasOwn(agent, "sandboxMode"))
+    throw compatibilityError("Claude cannot preserve a Codex sandbox mode");
 
   const policy: {
     name: string;

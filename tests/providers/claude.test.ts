@@ -582,6 +582,24 @@ describe("Claude adapter request contract", () => {
     },
   );
 
+  test("rejects a direct Codex sandbox policy before launch", async () => {
+    await expect(
+      adapter().run(
+        request("unreachable", {
+          agent: {
+            name: "restricted",
+            instructions: "stay focused",
+            sandboxMode: "workspace-write",
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "COMPATIBILITY_ERROR",
+      provider: "claude",
+      recoverable: false,
+    });
+  });
+
   test("rejects malformed policy before creating an MCP artifact", async () => {
     const malformed = {
       name: "restricted",
