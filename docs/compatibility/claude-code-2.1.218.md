@@ -10,6 +10,8 @@
 
 **Report date:** 2026-07-30
 
+**Release-readiness state:** pre-publication snapshot for the v0.1.0 candidate.
+
 **Overall status:** `partial`
 
 awsl implements the observable JavaScript workflow behaviors listed below. This
@@ -29,7 +31,8 @@ Evidence types:
   public protocol was invoked.
 - `synthetic-oracle`: replay against a reviewed, digest-locked expected
   observation; this is not a live Claude capture.
-- `host`: public package-registry or repository control-plane evidence.
+- `host`: package-registry or repository control-plane evidence inspected on
+  the report date.
 - `static`: parser, unit, integration, package, source, or configuration
   evidence that did not invoke a real model provider.
 - `none`: no supporting execution evidence exists; the pointer records the
@@ -56,7 +59,7 @@ Evidence types:
 | Clean, dirty, failed, cancelled, and resumed worktree lifecycle | `verified` | `static` | `tests/runtime/worktree.test.ts` — `pins detached HEAD, maps a nested cwd, and removes clean success`, `retains dirty, failed, and cancelled worktrees with bounded reasons`; `tests/runtime/engine.test.ts` — `removes a clean worktree when its snapshot persistence fails before provider launch`, `removes a clean worktree when its event persistence fails before provider launch`, `preserves the stored Git base if resume attempt journaling fails`, `preserves the stored Git base when its resume revalidation fails`, `keeps a retained worktree while a later attempt uses a distinct path` | Physical names are attempt-scoped; resume preserves the pinned base before its first snapshot and after a failed revalidation. Exact Claude changed-worktree behavior remains oracle-gated. |
 | Direct shell-free provider launch and descendant cleanup | `verified` | `static`, `fixture-provider` | `tests/providers/process.test.ts` — `uses exact argv and cwd, inherits env, and keeps hostile text off a shell`, `cleans an inherited-stdio descendant as soon as the successful provider exits`, `cleans an inherited-stdio descendant before reporting a nonzero exit`, and the cancellation process-group case | POSIX success, failure, cancellation, bounded streams, and descendant cleanup are exercised through an executable fixture. |
 | Secret redaction and private durable-state modes | `verified` | `static` | `tests/store/redact.test.ts` — `redacts sensitive structure and every string leaf`, `redacts a bare valid Basic authorization credential`; `tests/cli/state.test.ts` — `uses a stable collision-resistant project namespace and private hierarchy` | Authorization and proxy authorization, Bearer and valid Basic credentials, cookies, token fields, and private modes are covered. |
-| macOS and Linux hosted release gate | `partial` | `static` | `.github/workflows/ci.yml`; `tests/package/ci-security.test.ts` — `pins every GitHub Action to an immutable commit`; local command: `pnpm run check` | CI defines Node 22 jobs for both systems. This checkout has no hosted run or WSL evidence. |
+| macOS and Linux hosted release gate | `verified` | `host+static` | GitHub Actions run `30468070423` at `218114f`; `.github/workflows/ci.yml`; `tests/package/ci-security.test.ts` — `pins every GitHub Action to an immutable commit` | The complete Node 22 gate passed on Ubuntu and macOS. Native Windows is outside this release target. |
 
 The complete local gate is:
 
@@ -103,7 +106,7 @@ express the policy without broadening it or awsl rejects the call.
 
 | Requirement | Status | Evidence | Evidence pointer | Boundary or blocker |
 |---|---|---|---|---|
-| Public-source hygiene and Apache-2.0 files | `partial` | `static` | `tests/package/source-distribution.test.ts` — `excludes the complete external fixture directory`, `keeps public source free of private context and release secrets`; `pnpm run test:package` | The source check rejects ignored fixture paths, private context, personal build paths, and secret-shaped literals. Publication still requires an authorized owner/licensor and any required organizational OSS approval. |
+| Public-source hygiene and Apache-2.0 files | `partial` | `static` | `tests/package/source-distribution.test.ts` — `excludes the complete external fixture directory`, `keeps public source free of private context and release secrets`; `pnpm run test:package` | The source check rejects ignored fixture paths, private context, personal build paths, and secret-shaped literals. Licensing authority and any applicable organizational approval are owner attestations outside static repository evidence. |
 | Installable allowlisted tarball | `verified` | `static` | `tests/package/install-smoke.test.ts` — `packed CLI installs and runs from a clean directory`; `pnpm run test:package` | The test rejects source, tests, lockfiles, secrets, unexpected paths, and embedded source content, then installs and runs in a clean project. |
 | Installer-visible security and compatibility documentation | `verified` | `static` | `tests/package/install-smoke.test.ts` — `packed CLI installs and runs from a clean directory`; `pnpm pack --pack-destination <temporary-directory>` | The tarball contains `SECURITY.md`, this report, `CHANGELOG.md`, and the generated SBOM. |
 | Deterministic CycloneDX 1.6 SBOM | `verified` | `static` | `tests/package/sbom.test.ts` — `generates a deterministic production-only CycloneDX SBOM`; `pnpm run sbom` | The generator records the production lock closure and integrities and is byte-reproducible. Consumer resolution may differ within compatible ranges. |
@@ -112,7 +115,7 @@ express the policy without broadening it or awsl rejects the call.
 | Owned npm package identity | `verified` | `host+static` | `npm view @xhinliang/awsl@0.0.0-bootstrap.0 name version`; `node -p "require('./package.json').name"` | The public package is owned by `xhinliang`; the bootstrap version establishes the scoped identity without being the intended stable release. |
 | Public repository metadata and trusted publisher | `verified` | `host+static` | `package.json`; `.github/workflows/release.yml`; npm trusted publisher `ff94bc53-3070-4e61-a7d0-eccb9b93a43c` | The publisher is restricted to `XhinLiang/awsl`, workflow `release.yml`, and the `npm publish` action. |
 | Immutable release tag and published package | `partial` | `host` | GitHub immutable releases are enabled; `npm view @xhinliang/awsl@0.0.0-bootstrap.0`; `git tag --list` | The bootstrap package exists; the stable `v0.1.0` tag and package must still be created and verified. |
-| Hosted CI result for the final revision | `partial` | `host+static` | GitHub Actions run `30468070423` at `218114f`; `.github/workflows/release.yml` | The scoped-package change passed Ubuntu and macOS; the final release commit and release job must pass before publication. |
+| Hosted CI result for the final revision | `partial` | `host+static` | GitHub Actions run `30468070423` at `218114f`; `.github/workflows/ci.yml` | The scoped-package change passed Ubuntu and macOS; the final release commit and release job must pass before publication. |
 
 ## Known gaps
 
