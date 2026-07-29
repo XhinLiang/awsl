@@ -130,6 +130,21 @@ async function canonicalExecutable(candidate: string): Promise<string> {
   return physical;
 }
 
+function isMissingOrNotDirectoryError(error: unknown): boolean {
+  try {
+    if (error === null || typeof error !== "object" || isProxy(error))
+      return false;
+    const descriptor = Object.getOwnPropertyDescriptor(error, "code");
+    return (
+      descriptor !== undefined &&
+      "value" in descriptor &&
+      (descriptor.value === "ENOENT" || descriptor.value === "ENOTDIR")
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function resolveBareExecutable(
   name: string,
   pathValue: string,
@@ -140,22 +155,26 @@ async function resolveBareExecutable(
   for (const directory of directories) {
     if (!directory || directory.includes("\0") || !isAbsolute(directory))
       configError("provider PATH contains an invalid directory");
+    lexicalPath(directory, "/");
+  }
+
+  const searchableDirectories: string[] = [];
+  for (const directory of directories) {
     try {
-      lexicalPath(directory, "/");
-      if (!(await stat(directory)).isDirectory())
-        configError("provider PATH entry is not a directory");
+      const information = await stat(directory);
+      if (information.isDirectory()) searchableDirectories.push(directory);
     } catch (error) {
-      if (error instanceof AwslError) throw error;
+      if (isMissingOrNotDirectoryError(error)) continue;
       configError("provider PATH entry is unavailable");
     }
   }
 
-  for (const directory of directories) {
+  for (const directory of searchableDirectories) {
     const candidate = join(directory, name);
     try {
       await lstat(candidate);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (isMissingOrNotDirectoryError(error)) continue;
       configError("provider executable candidate is unavailable");
     }
     return canonicalExecutable(candidate);

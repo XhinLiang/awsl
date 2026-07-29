@@ -141,6 +141,101 @@ describe("provider identity resolution", () => {
     ).rejects.toSatisfy(configError);
   });
 
+  test("skips missing and regular-file PATH entries before using a valid directory", async () => {
+    const cwd = await directory();
+    const missing = join(await directory(), "missing");
+    const regularFile = join(await directory(), "not-a-directory");
+    await writeFile(regularFile, "not a directory");
+    const bin = await directory();
+    const target = await realpath(await executable(bin, "codex"));
+    let calls = 0;
+
+    await expect(
+      resolveProviderIdentity({
+        provider: "codex",
+        executable: "codex",
+        cwd,
+        env: {
+          PATH: [missing, regularFile, bin].join(delimiter),
+        },
+        probe: async () => {
+          calls += 1;
+          return {
+            stdout: Buffer.from("codex-cli 0.145.0"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+          };
+        },
+      }),
+    ).resolves.toMatchObject({
+      executableRealpath: target,
+      version: "0.145.0",
+    });
+    expect(calls).toBe(1);
+  });
+
+  test("reports an executable miss when every PATH entry is missing or not a directory", async () => {
+    const cwd = await directory();
+    const missing = join(await directory(), "missing");
+    const regularFile = join(await directory(), "not-a-directory");
+    await writeFile(regularFile, "not a directory");
+    let calls = 0;
+
+    await expect(
+      resolveProviderIdentity({
+        provider: "codex",
+        executable: "codex",
+        cwd,
+        env: { PATH: [missing, regularFile].join(delimiter) },
+        probe: async () => {
+          calls += 1;
+          return {
+            stdout: Buffer.from("codex-cli 0.145.0"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+          };
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFIG_ERROR",
+      message: "provider executable was not found",
+      recoverable: false,
+    });
+    expect(calls).toBe(0);
+  });
+
+  test("fails closed when inspecting a PATH entry returns ELOOP", async () => {
+    const cwd = await directory();
+    const loopRoot = await directory();
+    const loop = join(loopRoot, "loop");
+    await symlink("loop", loop);
+    const bin = await directory();
+    await executable(bin, "codex");
+    let calls = 0;
+
+    await expect(
+      resolveProviderIdentity({
+        provider: "codex",
+        executable: "codex",
+        cwd,
+        env: { PATH: [loop, bin].join(delimiter) },
+        probe: async () => {
+          calls += 1;
+          return {
+            stdout: Buffer.from("codex-cli 0.145.0"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+          };
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFIG_ERROR",
+      message: "provider PATH entry is unavailable",
+      recoverable: false,
+    });
+    expect(calls).toBe(0);
+  });
+
   test.each([undefined, "", `${delimiter}/absolute`])(
     "rejects missing or empty PATH segments before probing: %j",
     async (PATH) => {
