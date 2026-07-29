@@ -35,6 +35,11 @@ export interface PreparedProviderJsonSchema {
   matches(value: unknown): boolean;
 }
 
+export type PrepareCodexJsonSchemaOptions = Omit<
+  SerializeProviderJsonOptions,
+  "provider"
+>;
+
 const DRAFT_07_SCHEMA = "http://json-schema.org/draft-07/schema#";
 const DRAFT_2020_12_SCHEMA = "https://json-schema.org/draft/2020-12/schema";
 
@@ -192,6 +197,107 @@ export function prepareProviderJsonSchema(
       },
     );
   }
+}
+
+const CODEX_SCHEMA_MAPS = [
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+  "properties",
+] as const;
+const CODEX_SCHEMA_ARRAYS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
+const CODEX_SCHEMA_VALUES = [
+  "additionalItems",
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+] as const;
+
+function isSchemaRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactRequiredKeys(
+  required: unknown,
+  propertyKeys: readonly string[],
+): boolean {
+  if (!Array.isArray(required) || required.length !== propertyKeys.length)
+    return false;
+  const requiredKeys = new Set(required);
+  return (
+    requiredKeys.size === propertyKeys.length &&
+    propertyKeys.every((key) => requiredKeys.has(key))
+  );
+}
+
+function closeCodexRequiredFields(schema: unknown): boolean {
+  if (!isSchemaRecord(schema)) return false;
+  let changed = false;
+  const properties = schema.properties;
+  if (isSchemaRecord(properties)) {
+    const propertyKeys = Object.keys(properties);
+    if (!hasExactRequiredKeys(schema.required, propertyKeys)) {
+      schema.required = propertyKeys;
+      changed = true;
+    }
+  }
+
+  for (const keyword of CODEX_SCHEMA_MAPS) {
+    const map = schema[keyword];
+    if (!isSchemaRecord(map)) continue;
+    for (const nested of Object.values(map)) {
+      if (closeCodexRequiredFields(nested)) changed = true;
+    }
+  }
+  for (const keyword of CODEX_SCHEMA_ARRAYS) {
+    const alternatives = schema[keyword];
+    if (!Array.isArray(alternatives)) continue;
+    for (const nested of alternatives) {
+      if (closeCodexRequiredFields(nested)) changed = true;
+    }
+  }
+
+  const items = schema.items;
+  if (Array.isArray(items)) {
+    for (const nested of items) {
+      if (closeCodexRequiredFields(nested)) changed = true;
+    }
+  } else if (closeCodexRequiredFields(items)) {
+    changed = true;
+  }
+
+  const dependencies = schema.dependencies;
+  if (isSchemaRecord(dependencies)) {
+    for (const nested of Object.values(dependencies)) {
+      if (!Array.isArray(nested) && closeCodexRequiredFields(nested))
+        changed = true;
+    }
+  }
+  for (const keyword of CODEX_SCHEMA_VALUES) {
+    if (closeCodexRequiredFields(schema[keyword])) changed = true;
+  }
+  return changed;
+}
+
+export function prepareCodexJsonSchema(
+  value: unknown,
+  options: PrepareCodexJsonSchemaOptions,
+): PreparedProviderJsonSchema {
+  const providerOptions = { ...options, provider: "codex" as const };
+  const prepared = prepareProviderJsonSchema(value, providerOptions);
+  const schema = JSON.parse(prepared.packet) as object;
+  if (!closeCodexRequiredFields(schema)) return prepared;
+  return {
+    packet: serializeProviderJson(schema, providerOptions),
+    matches: prepared.matches,
+  };
 }
 
 export interface PrivateJsonFile {

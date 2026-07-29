@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   createPrivateJsonFile,
+  prepareCodexJsonSchema,
   prepareProviderJsonSchema,
   serializeProviderJson,
 } from "../../src/providers/schema.js";
@@ -116,6 +117,58 @@ describe("provider JSON artifacts", () => {
         value: { pattern: "literal" },
       }),
     ).toBe(true);
+  });
+
+  test("keeps optional workflow validation while only the Codex packet closes required fields", () => {
+    const workflowSchema = {
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        note: { type: "string" },
+      },
+      required: ["id"],
+      type: "object",
+    };
+    const originalPacket = JSON.stringify(workflowSchema);
+
+    const codex = prepareCodexJsonSchema(workflowSchema, {
+      label: "Codex schema",
+    });
+    const claude = prepareProviderJsonSchema(workflowSchema, {
+      label: "Claude schema",
+      provider: "claude",
+    });
+
+    expect(JSON.parse(codex.packet)).toEqual({
+      ...workflowSchema,
+      required: ["id", "note"],
+    });
+    expect(codex.matches({ id: "present" })).toBe(true);
+    expect(codex.matches({ id: 42 })).toBe(false);
+    expect(claude.packet).toBe(originalPacket);
+    expect(JSON.stringify(workflowSchema)).toBe(originalPacket);
+  });
+
+  test("leaves an already closed Codex schema packet byte-for-byte stable", () => {
+    const schema = {
+      additionalProperties: false,
+      properties: {
+        first: { type: "string" },
+        second: { type: "string" },
+      },
+      required: ["second", "first"],
+      type: "object",
+    };
+    const original = prepareProviderJsonSchema(schema, {
+      label: "schema",
+      provider: "codex",
+    });
+
+    expect(
+      prepareCodexJsonSchema(schema, {
+        label: "schema",
+      }).packet,
+    ).toBe(original.packet);
   });
 
   test("creates mode-0600 files in a mode-0700 directory and removes both", async () => {

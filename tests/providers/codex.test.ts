@@ -84,6 +84,12 @@ function fakeRunner(
   };
 }
 
+function deepFreezeJson(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreezeJson(child);
+}
+
 describe("Codex adapter contract", () => {
   test("places global options before exec and the prompt marker last", () => {
     expect(
@@ -1131,6 +1137,208 @@ describe("Codex adapter contract", () => {
       },
     });
     await expect(access(schemaPath)).rejects.toThrow();
+  });
+
+  test("closes every reachable object required list only in the Codex schema packet", async () => {
+    const workflowSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      additionalProperties: false,
+      properties: {
+        requiredText: { type: "string" },
+        optionalMeta: {
+          additionalProperties: false,
+          properties: {
+            flag: { type: "boolean" },
+            note: { type: "string" },
+          },
+          required: ["flag"],
+          type: "object",
+        },
+        rows: {
+          items: {
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+            },
+            required: ["id"],
+            type: "object",
+          },
+          type: "array",
+        },
+        choice: {
+          anyOf: [
+            {
+              additionalProperties: false,
+              properties: {
+                code: { type: "string" },
+                detail: { type: "string" },
+              },
+              required: ["code"],
+              type: "object",
+            },
+            { type: "null" },
+          ],
+        },
+        merged: {
+          allOf: [
+            {
+              additionalProperties: false,
+              properties: {
+                left: { type: "string" },
+                right: { type: "string" },
+              },
+              required: ["left"],
+              type: "object",
+            },
+          ],
+        },
+        variant: {
+          oneOf: [
+            {
+              additionalProperties: false,
+              properties: {
+                first: { type: "string" },
+                second: { type: "string" },
+              },
+              required: ["first"],
+              type: "object",
+            },
+            { type: "null" },
+          ],
+        },
+      },
+      required: ["requiredText"],
+      type: "object",
+      $defs: {
+        unused: {
+          additionalProperties: false,
+          properties: {
+            defined: { type: "string" },
+            extra: { type: "string" },
+          },
+          required: ["defined"],
+          type: "object",
+        },
+      },
+      definitions: {
+        legacy: {
+          additionalProperties: false,
+          properties: {
+            old: { type: "string" },
+            optional: { type: "string" },
+          },
+          required: ["old"],
+          type: "object",
+        },
+      },
+    };
+    const sourcePacket = JSON.stringify(workflowSchema);
+    deepFreezeJson(workflowSchema);
+    let schemaPath = "";
+    const fixture = fakeRunner(
+      successEvents.map((event) =>
+        event &&
+        typeof event === "object" &&
+        "type" in event &&
+        event.type === "item.completed" &&
+        "item" in event &&
+        (event.item as { id?: string }).id === "message-2"
+          ? {
+              ...event,
+              item: {
+                ...(event.item as Record<string, unknown>),
+                text: '{"requiredText":"present"}',
+              },
+            }
+          : event,
+      ),
+      async (options) => {
+        const marker = options.argv.indexOf("--output-schema");
+        schemaPath = options.argv[marker + 1] ?? "";
+        const packet = JSON.parse(
+          await readFile(schemaPath, "utf8"),
+        ) as typeof workflowSchema;
+
+        expect(packet.required).toEqual([
+          "requiredText",
+          "optionalMeta",
+          "rows",
+          "choice",
+          "merged",
+          "variant",
+        ]);
+        expect(packet.properties.optionalMeta.required).toEqual([
+          "flag",
+          "note",
+        ]);
+        expect(packet.properties.rows.items.required).toEqual(["id", "label"]);
+        expect(packet.properties.choice.anyOf[0]?.required).toEqual([
+          "code",
+          "detail",
+        ]);
+        expect(packet.properties.merged.allOf[0]?.required).toEqual([
+          "left",
+          "right",
+        ]);
+        expect(packet.properties.variant.oneOf[0]?.required).toEqual([
+          "first",
+          "second",
+        ]);
+        expect(packet.$defs.unused.required).toEqual(["defined", "extra"]);
+        expect(packet.definitions.legacy.required).toEqual(["old", "optional"]);
+      },
+    );
+
+    await expect(
+      new CodexAdapter({ identity, processRunner: fixture.run }).run(
+        request({ schema: workflowSchema }),
+      ),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      result: {
+        data: { requiredText: "present" },
+        text: '{"requiredText":"present"}',
+      },
+    });
+    expect(JSON.stringify(workflowSchema)).toBe(sourcePacket);
+    await expect(access(schemaPath)).rejects.toThrow();
+  });
+
+  test("rechecks the Codex byte limit after required-list closure", async () => {
+    const properties = Object.fromEntries(
+      Array.from({ length: 2_200 }, (_, index) => [
+        `p${String(index).padStart(4, "0")}`,
+        { type: "null" },
+      ]),
+    );
+    const schema = {
+      additionalProperties: false,
+      properties,
+      type: "object",
+    };
+    expect(Buffer.byteLength(JSON.stringify(schema))).toBeLessThan(64 * 1024);
+    const fixture = fakeRunner(successEvents);
+    const before = (await readdir(tmpdir())).filter((entry) =>
+      entry.startsWith("awsl-codex-schema-"),
+    );
+
+    await expect(
+      new CodexAdapter({ identity, processRunner: fixture.run }).run(
+        request({ schema }),
+      ),
+    ).rejects.toMatchObject({
+      code: "SCHEMA_ERROR",
+      provider: "codex",
+      recoverable: false,
+    });
+
+    expect(fixture.calls).toHaveLength(0);
+    expect(
+      (await readdir(tmpdir())).filter((entry) =>
+        entry.startsWith("awsl-codex-schema-"),
+      ),
+    ).toEqual(before);
   });
 
   test("returns SCHEMA_ERROR for a Codex structured result that mismatches the requested schema", async () => {

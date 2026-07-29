@@ -24,7 +24,7 @@ import {
 import {
   type PreparedProviderJsonSchema,
   createPrivateJsonFile,
-  prepareProviderJsonSchema,
+  prepareCodexJsonSchema,
 } from "./schema.js";
 
 export const CODEX_CAPABILITIES: ProviderCapabilities = Object.freeze({
@@ -601,9 +601,8 @@ export class CodexAdapter implements ProviderAdapter {
       | undefined;
 
     if (request.schema !== undefined) {
-      const preparedSchema = prepareProviderJsonSchema(request.schema, {
+      const preparedSchema = prepareCodexJsonSchema(request.schema, {
         label: "structured output schema",
-        provider: "codex",
       });
       schema = preparedSchema;
       try {
