@@ -34,7 +34,10 @@ import type {
 } from "../core/types.js";
 import { ClaudeAdapter } from "../providers/claude.js";
 import { CodexAdapter } from "../providers/codex.js";
-import { runProviderProcess } from "../providers/process.js";
+import {
+  type RunProviderProcessOptions,
+  runProviderProcess,
+} from "../providers/process.js";
 import { runWorkflow } from "../runtime/engine.js";
 import { redactJson } from "../store/redact.js";
 import { FileRunStore } from "../store/run-store.js";
@@ -283,6 +286,8 @@ function adapter(
   env: NodeJS.ProcessEnv,
 ): ProviderAdapter {
   const selected = config.providers[config.provider];
+  const processRunner = (options: RunProviderProcessOptions) =>
+    runProviderProcess({ ...options, env });
   return config.provider === "codex"
     ? new CodexAdapter({
         identity,
@@ -290,12 +295,12 @@ function adapter(
         ...(config.providers.codex.profile === undefined
           ? {}
           : { profile: config.providers.codex.profile }),
-        processRunner: async (options) =>
-          runProviderProcess({ ...options, env }),
+        processRunner,
       })
     : new ClaudeAdapter({
         identity,
         configuredArgs: selected.args,
+        processRunner,
       });
 }
 

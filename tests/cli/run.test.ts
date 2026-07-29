@@ -22,9 +22,12 @@ const workflows = dirname(
 const fakeCodex = fileURLToPath(
   new URL("../fixtures/bin/fake-codex.mjs", import.meta.url),
 );
+const fakeClaude = fileURLToPath(
+  new URL("../fixtures/bin/fake-claude.mjs", import.meta.url),
+);
 
 beforeAll(async () => {
-  await chmod(fakeCodex, 0o755);
+  await Promise.all([chmod(fakeCodex, 0o755), chmod(fakeClaude, 0o755)]);
 });
 
 function output(format: "pretty" | "json" | "jsonl") {
@@ -192,25 +195,18 @@ describe("CLI workflow execution", () => {
       CODEX_HOME: join(cwd, "codex-home"),
     };
     const cli = cliContext(cwd, env);
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      expect(
-        await executeCli(
-          [
-            join(workflows, "args.js"),
-            "--args",
-            '{"value":7}',
-            "--format",
-            "json",
-          ],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    expect(
+      await executeCli(
+        [
+          join(workflows, "args.js"),
+          "--args",
+          '{"value":7}',
+          "--format",
+          "json",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
     expect(JSON.parse(cli.output().stdout)).toMatchObject({
       runId: expect.stringMatching(/^wf-/),
       status: "completed",
@@ -231,26 +227,19 @@ describe("CLI workflow execution", () => {
       CODEX_HOME: join(cwd, "codex-home"),
     };
     const cli = cliContext(cwd, env);
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      expect(
-        await executeCli(
-          [
-            "run",
-            join(workflows, "nested", "basic-agent.js"),
-            "--args",
-            '{"prompt":"hello"}',
-            "--format",
-            "jsonl",
-          ],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--args",
+          '{"prompt":"hello"}',
+          "--format",
+          "jsonl",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
     const events = cli
       .output()
       .stdout.trim()
@@ -265,6 +254,63 @@ describe("CLI workflow execution", () => {
       },
     });
     expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+  });
+
+  test("passes the CLI context environment to the Claude provider process", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-cli-run-")));
+    const capture = join(cwd, "claude-capture.jsonl");
+    const ambientCapture = process.env.AWSL_FAKE_CLAUDE_CAPTURE;
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_CLAUDE_COMMAND: fakeClaude,
+      AWSL_FAKE_CLAUDE_CAPTURE: capture,
+      CLAUDE_CONFIG_DIR: join(cwd, "claude-config"),
+    };
+    const cli = cliContext(cwd, env);
+
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--provider",
+          "claude",
+          "--args",
+          '{"prompt":"fixture:success"}',
+          "--format",
+          "jsonl",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
+
+    const events = cli
+      .output()
+      .stdout.trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(events.at(-1)).toMatchObject({
+      type: "run.completed",
+      data: {
+        status: "completed",
+        result: {
+          answer: "ok",
+          requestedStatus: "failed",
+        },
+      },
+    });
+    const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
+    expect(invocation.prompt).toBe("fixture:success");
+    expect(invocation.argv).toEqual(
+      expect.arrayContaining([
+        "-p",
+        "--verbose",
+        "--output-format",
+        "stream-json",
+      ]),
+    );
+    expect(process.env.AWSL_FAKE_CLAUDE_CAPTURE).toBe(ambientCapture);
   });
 
   test("routes a named Codex agent to its native TOML policy on Codex CLI 0.146.0", async () => {
@@ -327,20 +373,13 @@ describe("CLI workflow execution", () => {
       CLAUDE_CONFIG_DIR: claudeConfigDir,
     };
     const cli = cliContext(cwd, env);
-    const previousVersion = process.env.AWSL_FAKE_CODEX_VERSION;
-    process.env.AWSL_FAKE_CODEX_VERSION = "0.146.0";
-    try {
-      expect(
-        await executeCli(
-          ["run", workflow, "--provider", "codex", "--format", "jsonl"],
-          cli.context,
-        ),
-      ).toBe(0);
-    } finally {
-      if (previousVersion === undefined)
-        process.env.AWSL_FAKE_CODEX_VERSION = undefined;
-      else process.env.AWSL_FAKE_CODEX_VERSION = previousVersion;
-    }
+    const ambientVersion = process.env.AWSL_FAKE_CODEX_VERSION;
+    expect(
+      await executeCli(
+        ["run", workflow, "--provider", "codex", "--format", "jsonl"],
+        cli.context,
+      ),
+    ).toBe(0);
 
     const events = cli
       .output()
@@ -366,6 +405,7 @@ describe("CLI workflow execution", () => {
     expect(invocation.prompt).toContain("CODEX_NATIVE_AUDIT_MARKER");
     expect(invocation.prompt).not.toContain("CLAUDE_FOREIGN_AUDIT_MARKER");
     expect(invocation.argv).not.toContain("claude-opus-foreign");
-    expect(await readFile(log, "utf8")).toBe("run\n");
+    expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+    expect(process.env.AWSL_FAKE_CODEX_VERSION).toBe(ambientVersion);
   });
 });

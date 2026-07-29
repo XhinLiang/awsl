@@ -197,102 +197,96 @@ describe("CLI durable resume", () => {
       ...process.env,
       AWSL_STATE_DIR: join(cwd, "state"),
       AWSL_CODEX_COMMAND: fakeCodex,
+      AWSL_FAKE_CODEX_LOG: log,
       CODEX_HOME: join(cwd, "codex-home"),
     };
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      const first = cliContext(cwd, env);
-      expect(
-        await executeCli(
-          [
-            join(workflows, "args.js"),
-            "--args",
-            '{"value":1}',
-            "--budget",
-            "10",
-            "--format",
-            "json",
-          ],
-          first.context,
-        ),
-      ).toBe(0);
-      const runId = JSON.parse(first.output().stdout).runId as string;
+    const first = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          join(workflows, "args.js"),
+          "--args",
+          '{"value":1}',
+          "--budget",
+          "10",
+          "--format",
+          "json",
+        ],
+        first.context,
+      ),
+    ).toBe(0);
+    const runId = JSON.parse(first.output().stdout).runId as string;
 
-      const resumed = cliContext(cwd, env);
-      expect(
-        await executeCli(
-          [
-            "resume",
-            runId,
-            "--args",
-            '{"value":2}',
-            "--budget",
-            "20",
-            "--format",
-            "json",
-          ],
-          resumed.context,
-        ),
-      ).toBe(0);
-      expect(JSON.parse(resumed.output().stdout)).toMatchObject({
+    const resumed = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          "resume",
+          runId,
+          "--args",
+          '{"value":2}',
+          "--budget",
+          "20",
+          "--format",
+          "json",
+        ],
+        resumed.context,
+      ),
+    ).toBe(0);
+    expect(JSON.parse(resumed.output().stdout)).toMatchObject({
+      runId,
+      status: "completed",
+      result: { value: 2 },
+      budget: { total: 20, spent: 0 },
+    });
+
+    const listed = cliContext(cwd, env);
+    expect(
+      await executeCli(["runs", "list", "--format", "json"], listed.context),
+    ).toBe(0);
+    expect(JSON.parse(listed.output().stdout).runs).toContainEqual(
+      expect.objectContaining({
         runId,
         status: "completed",
+        attemptSeq: 1,
+      }),
+    );
+
+    const shown = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        ["runs", "show", runId, "--format", "json"],
+        shown.context,
+      ),
+    ).toBe(0);
+    expect(JSON.parse(shown.output().stdout)).toMatchObject({
+      run: {
+        runId,
+        status: "completed",
+        attempt: { seq: 1 },
+        args: { value: 2 },
+      },
+      result: {
+        status: "completed",
         result: { value: 2 },
-        budget: { total: 20, spent: 0 },
-      });
+      },
+    });
 
-      const listed = cliContext(cwd, env);
-      expect(
-        await executeCli(["runs", "list", "--format", "json"], listed.context),
-      ).toBe(0);
-      expect(JSON.parse(listed.output().stdout).runs).toContainEqual(
-        expect.objectContaining({
-          runId,
-          status: "completed",
-          attemptSeq: 1,
-        }),
-      );
-
-      const shown = cliContext(cwd, env);
-      expect(
-        await executeCli(
-          ["runs", "show", runId, "--format", "json"],
-          shown.context,
-        ),
-      ).toBe(0);
-      expect(JSON.parse(shown.output().stdout)).toMatchObject({
-        run: {
-          runId,
-          status: "completed",
-          attempt: { seq: 1 },
-          args: { value: 2 },
-        },
-        result: {
-          status: "completed",
-          result: { value: 2 },
-        },
-      });
-
-      const shownJsonl = cliContext(cwd, env);
-      expect(
-        await executeCli(
-          ["runs", "show", runId, "--format", "jsonl"],
-          shownJsonl.context,
-        ),
-      ).toBe(0);
-      expect(JSON.parse(shownJsonl.output().stdout)).toMatchObject({
-        version: 1,
-        type: "command.completed",
-        data: {
-          run: { runId, status: "completed" },
-          result: { status: "completed" },
-        },
-      });
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    const shownJsonl = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        ["runs", "show", runId, "--format", "jsonl"],
+        shownJsonl.context,
+      ),
+    ).toBe(0);
+    expect(JSON.parse(shownJsonl.output().stdout)).toMatchObject({
+      version: 1,
+      type: "command.completed",
+      data: {
+        run: { runId, status: "completed" },
+        result: { status: "completed" },
+      },
+    });
     expect(await readFile(log, "utf8")).toBe("version\nversion\n");
   });
 

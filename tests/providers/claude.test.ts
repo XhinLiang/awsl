@@ -17,6 +17,7 @@ import {
   type ClaudeAdapterOptions,
   buildClaudeArgv,
 } from "../../src/providers/claude.js";
+import type { RunProviderProcessOptions } from "../../src/providers/process.js";
 
 const fixtureExecutable = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -121,6 +122,44 @@ describe("Claude adapter request contract", () => {
     expect(launch.argv).not.toContain("--dangerously-skip-permissions");
   });
 
+  test("uses an injected process runner", async () => {
+    let launch: RunProviderProcessOptions | undefined;
+    const processRunner = vi.fn(async (options: RunProviderProcessOptions) => {
+      launch = options;
+      await options.onEvent?.({
+        type: "system",
+        subtype: "init",
+        session_id: "injected-session",
+        model: "claude-injected",
+      });
+      await options.onEvent?.({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        session_id: "injected-session",
+        result: "injected",
+        usage: { input_tokens: 2, output_tokens: 1 },
+      });
+      return {
+        exitCode: 0 as const,
+        signal: null,
+        eventCount: 2,
+        stderrTail: Buffer.alloc(0),
+      };
+    });
+    const provider = new ClaudeAdapter({ identity, processRunner });
+
+    await expect(provider.run(request("unreachable"))).resolves.toMatchObject({
+      kind: "completed",
+      result: { text: "injected", model: "claude-injected" },
+    });
+    expect(processRunner).toHaveBeenCalledOnce();
+    expect(launch).toMatchObject({
+      executable: fixtureExecutable,
+      prompt: "fixture:unreachable",
+    });
+  });
+
   test("rejects hostile configured args in the constructor without invoking traps", () => {
     const sentinel = new Error("configured args trap must not run");
     let trapCalls = 0;
@@ -190,6 +229,7 @@ describe("Claude adapter request contract", () => {
       { identity: coercibleIdentity },
       { identity, unknown: true },
       { identity, profile: "must-not-be-ignored" },
+      { identity, processRunner: "must-be-a-function" },
       { identity: { ...identity, unknown: true } },
     ]) {
       expect(

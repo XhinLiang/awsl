@@ -110,16 +110,9 @@ describe("CLI configuration and doctor commands", () => {
       AWSL_FAKE_CODEX_LOG: log,
     };
     const cli = memoryCli(cwd, env);
-    const previous = process.env.AWSL_FAKE_CODEX_LOG;
-    process.env.AWSL_FAKE_CODEX_LOG = log;
-    try {
-      expect(
-        await executeCli(["doctor", "--format", "json"], cli.context),
-      ).toBe(0);
-    } finally {
-      if (previous === undefined) process.env.AWSL_FAKE_CODEX_LOG = undefined;
-      else process.env.AWSL_FAKE_CODEX_LOG = previous;
-    }
+    expect(await executeCli(["doctor", "--format", "json"], cli.context)).toBe(
+      0,
+    );
     expect(JSON.parse(cli.output().stdout)).toMatchObject({
       checks: {
         node: { available: true },

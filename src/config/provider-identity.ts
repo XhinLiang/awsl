@@ -21,6 +21,7 @@ export interface ProviderVersionProbeInput {
   readonly cwd: string;
   readonly maxStdoutBytes: number;
   readonly maxStderrBytes: number;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface ProviderVersionProbeResult {
@@ -313,7 +314,6 @@ export async function resolveProviderIdentity(
     (typeof configuredProbe !== "function" || isProxy(configuredProbe))
   )
     configError("provider version probe is unavailable");
-  const probe = configuredProbe ?? defaultProviderVersionProbe;
   const pathValue =
     kind === "bare" ? snapshotPath(captured.env ?? process.env) : undefined;
 
@@ -324,14 +324,19 @@ export async function resolveProviderIdentity(
       : await canonicalExecutable(lexicalPath(executable as string, cwd));
   let rawResult: unknown;
   try {
-    rawResult = await (probe as ProviderVersionProbe)(
-      Object.freeze({
-        executableRealpath,
-        cwd,
-        maxStdoutBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
-        maxStderrBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
-      }),
-    );
+    const input = Object.freeze({
+      executableRealpath,
+      cwd,
+      maxStdoutBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
+      maxStderrBytes: PROVIDER_VERSION_STREAM_LIMIT_BYTES,
+    });
+    rawResult =
+      configuredProbe === undefined
+        ? await defaultProviderVersionProbe({
+            ...input,
+            env: (captured.env ?? process.env) as NodeJS.ProcessEnv,
+          })
+        : await (configuredProbe as ProviderVersionProbe)(input);
   } catch {
     configError("provider version probe failed");
   }

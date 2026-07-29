@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 
 const argv = process.argv.slice(2);
 if (argv.includes("--version")) {
@@ -11,6 +11,12 @@ const mcpFlag = argv.indexOf("--mcp-config");
 const mcpPath = mcpFlag === -1 ? undefined : argv[mcpFlag + 1];
 let prompt = "";
 for await (const chunk of process.stdin) prompt += chunk;
+if (process.env.AWSL_FAKE_CLAUDE_CAPTURE) {
+  await appendFile(
+    process.env.AWSL_FAKE_CLAUDE_CAPTURE,
+    `${JSON.stringify({ argv, prompt })}\n`,
+  );
+}
 const fixture = prompt.startsWith("fixture:")
   ? prompt.slice("fixture:".length)
   : "success";
