@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## 0.1.0 - Unreleased
+
+### Added
+
+- JavaScript workflow compilation and deterministic worker execution.
+- Codex and Claude CLI provider adapters with fixed-provider workflow trees.
+- Agent, parallel, pipeline, phase, log, child-workflow, budget, and worktree
+  APIs.
+- Durable run state, longest-prefix resume, lifecycle signals, and versioned
+  JSONL events.
+- Provider Pin V2 for configured native models and attempt-scoped retained
+  worktree paths across resume.
+- CLI inspection, configuration provenance, doctor, run management, and
+  pretty/JSON/JSONL output.
+- Package install smoke tests, an independently authored 19-call orchestration
+  profile, a reviewed synthetic 2.1.218-informed replay, and a deterministic
+  CycloneDX SBOM.
+
+### Security
+
+- Private state modes, direct process spawning, strict paths and JSON, bounded
+  inputs and durable outputs, descendant cleanup, defensive redaction,
+  regex-schema rejection, and fail-closed agent policy negotiation.
+
+Compatibility is limited to behaviors supported by evidence in
+`docs/compatibility/claude-code-2.1.218.md`; this entry does not certify
+universal Claude Code equivalence.

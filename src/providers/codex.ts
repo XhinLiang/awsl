@@ -1,0 +1,640 @@
+import {
+  validateCodexProfile,
+  validateProviderArgs,
+} from "../config/model-map.js";
+import { AwslError } from "../core/errors.js";
+import { strictJsonClone } from "../core/strict-json.js";
+import type {
+  AgentEffort,
+  NegotiatedAgentPolicy,
+  ProviderAdapter,
+  ProviderCapabilities,
+  ProviderIdentity,
+  ProviderObservation,
+  ProviderOutcome,
+  ProviderRequest,
+  ProviderUsage,
+} from "../core/types.js";
+import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
+import {
+  type ProviderProcessResult,
+  type RunProviderProcessOptions,
+  runProviderProcess,
+} from "./process.js";
+import {
+  type PreparedProviderJsonSchema,
+  createPrivateJsonFile,
+  prepareProviderJsonSchema,
+} from "./schema.js";
+
+export const CODEX_CAPABILITIES: ProviderCapabilities = Object.freeze({
+  systemPrompt: "prompt-prefix",
+  tools: Object.freeze({
+    allowlist: false,
+    denylist: false,
+    denyAll: false,
+  }),
+  mcp: Object.freeze({
+    additive: false,
+    strictReplacement: false,
+    denyAll: false,
+  }),
+  permissionModes: Object.freeze([]),
+  skills: false,
+  structuredAttemptEvents: false,
+  resolvedModelEvents: false,
+});
+
+export interface CodexArgvOptions {
+  configuredArgs?: readonly string[];
+  profile?: string;
+  model?: string;
+  effort?: AgentEffort;
+}
+
+export function buildCodexArgv(
+  options: CodexArgvOptions,
+  schemaPath?: string,
+): string[] {
+  const configuredArgs = validateProviderArgs(
+    "codex",
+    options.configuredArgs ?? [],
+  );
+  const profile =
+    options.profile === undefined
+      ? undefined
+      : validateCodexProfile(options.profile);
+  const argv: string[] = [];
+  if (profile !== undefined) argv.push("--profile", profile);
+  argv.push(...configuredArgs);
+  if (options.model !== undefined) {
+    argv.push("-m", options.model);
+  }
+  if (options.effort !== undefined) {
+    argv.push("-c", `model_reasoning_effort="${options.effort}"`);
+  }
+  argv.push("exec", "--json");
+  if (schemaPath !== undefined) {
+    argv.push("--output-schema", schemaPath);
+  }
+  argv.push("-");
+  return argv;
+}
+
+export type CodexProcessRunner = (
+  options: RunProviderProcessOptions,
+) => Promise<ProviderProcessResult>;
+
+function compatibilityError(message: string): AwslError {
+  return new AwslError("COMPATIBILITY_ERROR", message, {
+    provider: "codex",
+    recoverable: false,
+  });
+}
+
+function providerError(message: string, cause?: unknown): AwslError {
+  return new AwslError("PROVIDER_ERROR", message, {
+    provider: "codex",
+    recoverable: false,
+    cause,
+  });
+}
+
+function snapshotAgentRecord(
+  agent: NegotiatedAgentPolicy,
+): Record<string, unknown> {
+  try {
+    const snapshot = strictJsonClone(agent, "Codex agent policy");
+    if (!isRecord(snapshot)) throw new TypeError();
+    return snapshot;
+  } catch {
+    throw compatibilityError(
+      "Codex agent policy must contain only exact JSON data",
+    );
+  }
+}
+
+function validateAgentPolicy(
+  request: ProviderRequest,
+): NegotiatedAgentPolicy | undefined {
+  if (request.model !== undefined) {
+    if (
+      typeof request.model !== "string" ||
+      request.model.trim().length === 0 ||
+      request.model.includes("\0")
+    )
+      throw compatibilityError(
+        "Codex model must be a nonempty CLI-safe string",
+      );
+  }
+  if (
+    request.effort !== undefined &&
+    !new Set(["low", "medium", "high", "xhigh", "max"]).has(request.effort)
+  )
+    throw compatibilityError("Codex does not support the requested effort");
+  if (request.agent === undefined) return undefined;
+  const agent = snapshotAgentRecord(request.agent);
+  const name = agent.name;
+  const instructions = agent.instructions;
+  if (
+    typeof name !== "string" ||
+    !name ||
+    name.includes("\0") ||
+    typeof instructions !== "string" ||
+    !instructions ||
+    instructions.includes("\0")
+  )
+    throw compatibilityError("Codex agent policy is invalid");
+
+  const skillsPresent = Object.hasOwn(agent, "skills");
+  const skills = agent.skills;
+  if (skillsPresent && (!Array.isArray(skills) || skills.length !== 0))
+    throw compatibilityError("Codex cannot preserve agent skills");
+
+  if (Object.hasOwn(agent, "tools")) {
+    throw compatibilityError(
+      "Codex cannot preserve the named-agent tool allowlist",
+    );
+  }
+  if (Object.hasOwn(agent, "disallowedTools")) {
+    throw compatibilityError(
+      "Codex cannot preserve the named-agent tool denylist",
+    );
+  }
+  if (Object.hasOwn(agent, "mcp")) {
+    throw compatibilityError(
+      "Codex cannot preserve the named-agent MCP policy",
+    );
+  }
+  if (Object.hasOwn(agent, "permissionMode")) {
+    throw compatibilityError(
+      "Codex cannot preserve the named-agent permission mode",
+    );
+  }
+  return Object.freeze({ instructions, name });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function eventType(event: unknown): string {
+  if (!isRecord(event) || typeof event.type !== "string") {
+    throw providerError("Codex emitted an invalid event envelope");
+  }
+  return event.type;
+}
+
+function token(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+    ? (value as number)
+    : undefined;
+}
+
+function parseUsage(value: unknown): ProviderUsage {
+  if (!isRecord(value)) return { complete: false };
+  const inputTokens = token(value.input_tokens);
+  const cachedInputTokens = token(value.cached_input_tokens);
+  const outputTokens = token(value.output_tokens);
+  const reasoningTokens = token(value.reasoning_output_tokens);
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    complete: outputTokens !== undefined,
+  };
+}
+
+const ESCAPE = String.fromCharCode(0x1b);
+const ANSI_ESCAPE_SEQUENCE = new RegExp(
+  `${ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07]*(?:\\x07|${ESCAPE}\\\\))`,
+  "g",
+);
+
+function stripControlCharacters(value: string): string {
+  return Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    return code <= 0x1f || (code >= 0x7f && code <= 0x9f) ? " " : character;
+  }).join("");
+}
+
+function sanitizeProviderDetail(value: string): string {
+  const withoutAnsi = value.replace(ANSI_ESCAPE_SEQUENCE, "");
+  return stripControlCharacters(withoutAnsi)
+    .replace(
+      /\b(aws(?:[_-]?secret[_-]?access[_-]?key|[_-]?access[_-]?key[_-]?id|[_-]?session[_-]?token))\s*[:=]\s*[^\s,;]+/gi,
+      "$1: [REDACTED]",
+    )
+    .replace(
+      /\b(x-amz-(?:credential|security-token|signature))\s*[:=]\s*[^\s,;&]+/gi,
+      "$1: [REDACTED]",
+    )
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1[REDACTED]@")
+    .replace(
+      /\b(authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi,
+      "$1: [REDACTED]",
+    )
+    .replace(/\b(bearer)\s+[a-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(cookie|set-cookie|x-api-key|api[ _-]?key|token|secret|password|awsaccesskeyid)\s*[:=]\s*[^\s,;]+/gi,
+      "$1: [REDACTED]",
+    )
+    .replace(/\b(x-amz-signature|signature)\s*=\s*[^\s,&]+/gi, "$1=[REDACTED]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 2_048);
+}
+
+function errorMessage(value: unknown): string | undefined {
+  if (typeof value === "string") return sanitizeProviderDetail(value);
+  if (isRecord(value) && typeof value.message === "string") {
+    return sanitizeProviderDetail(value.message);
+  }
+  return undefined;
+}
+
+const ITEM_TYPES = new Set([
+  "agent_message",
+  "command_execution",
+  "error",
+  "file_change",
+  "mcp_tool_call",
+  "reasoning",
+  "todo_list",
+  "web_search",
+]);
+
+class CodexProtocol {
+  #completedText?: string;
+  #lastCriticalError?: string;
+  #observation: ProviderObservation = {};
+  #terminal?: "completed" | "failed";
+  #terminalError?: AwslError;
+  #threadStarted = false;
+  #turnStarted = false;
+  #usage: ProviderUsage = { complete: false };
+
+  get observation(): ProviderObservation | undefined {
+    return Object.keys(this.#observation).length === 0
+      ? undefined
+      : { ...this.#observation };
+  }
+
+  get usage(): ProviderUsage {
+    return { ...this.#usage };
+  }
+
+  consume(event: unknown): void {
+    if (this.#terminal !== undefined) {
+      throw providerError("Codex emitted an event after the terminal event");
+    }
+
+    const type = eventType(event);
+    const object = event as Record<string, unknown>;
+    switch (type) {
+      case "thread.started": {
+        if (
+          this.#threadStarted ||
+          typeof object.thread_id !== "string" ||
+          object.thread_id.length === 0
+        ) {
+          throw providerError("Codex emitted an invalid thread.started event");
+        }
+        this.#threadStarted = true;
+        this.#observation.threadId = object.thread_id;
+        break;
+      }
+      case "turn.started": {
+        if (!this.#threadStarted || this.#turnStarted) {
+          throw providerError("Codex emitted an invalid turn.started event");
+        }
+        this.#turnStarted = true;
+        break;
+      }
+      case "item.started":
+      case "item.updated":
+      case "item.completed": {
+        if (!this.#threadStarted || !isRecord(object.item)) {
+          throw providerError(`Codex emitted an invalid ${type} event`);
+        }
+        const item = object.item;
+        if (
+          typeof item.type !== "string" ||
+          !ITEM_TYPES.has(item.type) ||
+          typeof item.id !== "string" ||
+          item.id.length === 0
+        ) {
+          throw providerError(`Codex emitted an unsupported ${type} item`);
+        }
+        const isInitializationWarning =
+          !this.#turnStarted &&
+          type === "item.completed" &&
+          item.type === "error";
+        if (!this.#turnStarted && !isInitializationWarning) {
+          throw providerError(`Codex emitted ${type} before turn.started`);
+        }
+        if (type === "item.completed" && item.type === "agent_message") {
+          if (typeof item.text !== "string") {
+            throw providerError(
+              "Codex completed an agent message without text",
+            );
+          }
+          this.#completedText = item.text;
+        }
+        break;
+      }
+      case "error": {
+        this.#lastCriticalError =
+          errorMessage(object.message) ??
+          errorMessage(object.error) ??
+          "Codex reported an unspecified top-level error";
+        break;
+      }
+      case "turn.completed": {
+        if (!this.#turnStarted || this.#completedText === undefined) {
+          throw providerError(
+            "Codex completed a turn without a completed agent message",
+          );
+        }
+        this.#usage = parseUsage(object.usage);
+        this.#terminal = "completed";
+        break;
+      }
+      case "turn.failed": {
+        if (!this.#turnStarted) {
+          throw providerError("Codex failed a turn before turn.started");
+        }
+        this.#usage = parseUsage(object.usage);
+        this.#terminal = "failed";
+        const detail =
+          errorMessage(object.error) ??
+          errorMessage(object.message) ??
+          this.#lastCriticalError ??
+          "unspecified turn failure";
+        this.#terminalError = providerError(`Codex turn failed: ${detail}`);
+        break;
+      }
+      default:
+        throw providerError(`Codex emitted unsupported event type "${type}"`);
+    }
+  }
+
+  finish(
+    request: ProviderRequest,
+    schema: PreparedProviderJsonSchema | undefined,
+  ): ProviderOutcome {
+    if (this.#terminal === "failed") {
+      return {
+        kind: "error",
+        error:
+          this.#terminalError ??
+          providerError("Codex turn failed without an error"),
+        usage: this.usage,
+        ...(this.observation === undefined
+          ? {}
+          : { observation: this.observation }),
+      };
+    }
+    if (this.#terminal !== "completed" || this.#completedText === undefined) {
+      const suffix =
+        this.#lastCriticalError === undefined
+          ? "without a terminal event"
+          : `after reporting: ${this.#lastCriticalError}`;
+      return {
+        kind: "error",
+        error: providerError(`Codex stream ended ${suffix}`),
+        usage: this.usage,
+        ...(this.observation === undefined
+          ? {}
+          : { observation: this.observation }),
+      };
+    }
+
+    const result = {
+      text: this.#completedText,
+      ...(request.model === undefined ? {} : { model: request.model }),
+      ...(request.effort === undefined ? {} : { effort: request.effort }),
+    };
+    if (request.schema !== undefined) {
+      try {
+        const data = JSON.parse(this.#completedText) as unknown;
+        if (schema === undefined || !schema.matches(data)) {
+          return {
+            kind: "error",
+            error: new AwslError(
+              "SCHEMA_ERROR",
+              "Codex structured result does not match the requested schema",
+              {
+                provider: "codex",
+                recoverable: false,
+              },
+            ),
+            usage: this.usage,
+            ...(this.observation === undefined
+              ? {}
+              : { observation: this.observation }),
+          };
+        }
+        return {
+          kind: "completed",
+          result: {
+            ...result,
+            data,
+          },
+          usage: this.usage,
+          ...(this.observation === undefined
+            ? {}
+            : { observation: this.observation }),
+        };
+      } catch (error) {
+        return {
+          kind: "error",
+          error: new AwslError(
+            "SCHEMA_ERROR",
+            "Codex returned invalid structured JSON",
+            {
+              provider: "codex",
+              recoverable: false,
+              cause: error,
+            },
+          ),
+          usage: this.usage,
+          ...(this.observation === undefined
+            ? {}
+            : { observation: this.observation }),
+        };
+      }
+    }
+    return {
+      kind: "completed",
+      result,
+      usage: this.usage,
+      ...(this.observation === undefined
+        ? {}
+        : { observation: this.observation }),
+    };
+  }
+}
+
+function escapedAgentName(name: string): string {
+  return name
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function providerPrompt(
+  request: ProviderRequest,
+  agent: NegotiatedAgentPolicy | undefined,
+): string {
+  if (!agent) return request.prompt;
+  return [
+    `<awsl-agent name="${escapedAgentName(agent.name)}">`,
+    agent.instructions,
+    "</awsl-agent>",
+    "",
+    request.prompt,
+  ].join("\n");
+}
+
+function cancelled(reason?: unknown): AwslError {
+  return reason instanceof AwslError && reason.code === "CANCELLED"
+    ? reason
+    : new AwslError("CANCELLED", "Codex provider call cancelled", {
+        provider: "codex",
+        recoverable: false,
+        cause: reason,
+      });
+}
+
+export interface CodexAdapterOptions {
+  identity: ProviderIdentity;
+  configuredArgs?: readonly string[];
+  profile?: string;
+  processRunner?: CodexProcessRunner;
+}
+
+export class CodexAdapter implements ProviderAdapter {
+  readonly id = "codex" as const;
+  readonly capabilities = CODEX_CAPABILITIES;
+  readonly identity: ProviderIdentity;
+  readonly #processRunner: CodexProcessRunner;
+  readonly #configuredArgs: readonly string[];
+  readonly #profile?: string;
+
+  constructor(options: CodexAdapterOptions) {
+    const snapshot = snapshotAdapterOptions(options, "codex", [
+      "identity",
+      "configuredArgs",
+      "profile",
+      "processRunner",
+    ]);
+    this.identity = snapshotProviderIdentity(snapshot.identity, "codex");
+    this.#configuredArgs = validateProviderArgs(
+      "codex",
+      (snapshot.configuredArgs ?? []) as readonly string[],
+    );
+    this.#profile =
+      snapshot.profile === undefined
+        ? undefined
+        : validateCodexProfile(snapshot.profile);
+    if (
+      Object.hasOwn(snapshot, "processRunner") &&
+      typeof snapshot.processRunner !== "function"
+    )
+      throw new AwslError(
+        "CONFIG_ERROR",
+        "codex process runner must be an own data function",
+        { recoverable: false },
+      );
+    this.#processRunner =
+      (snapshot.processRunner as CodexProcessRunner | undefined) ??
+      runProviderProcess;
+  }
+
+  async run(request: ProviderRequest): Promise<ProviderOutcome> {
+    if (request.signal.aborted) throw cancelled(request.signal.reason);
+    const agent = validateAgentPolicy(request);
+
+    const protocol = new CodexProtocol();
+    let protocolFailure: AwslError | undefined;
+    let schema: PreparedProviderJsonSchema | undefined;
+    let schemaArtifact:
+      | Awaited<ReturnType<typeof createPrivateJsonFile>>
+      | undefined;
+
+    if (request.schema !== undefined) {
+      const preparedSchema = prepareProviderJsonSchema(request.schema, {
+        label: "structured output schema",
+        provider: "codex",
+      });
+      schema = preparedSchema;
+      try {
+        schemaArtifact = await createPrivateJsonFile(preparedSchema.packet, {
+          basename: "schema.json",
+          prefix: "awsl-codex-schema-",
+        });
+      } catch (error) {
+        if (error instanceof AwslError) throw error;
+        throw new AwslError(
+          "SCHEMA_ERROR",
+          "Could not create the Codex schema artifact",
+          {
+            provider: "codex",
+            recoverable: false,
+            cause: error,
+          },
+        );
+      }
+    }
+
+    try {
+      await this.#processRunner({
+        argv: buildCodexArgv(
+          {
+            configuredArgs: this.#configuredArgs,
+            profile: this.#profile,
+            effort: request.effort,
+            model: request.model,
+          },
+          schemaArtifact?.path,
+        ),
+        cwd: request.cwd,
+        executable: this.identity.executableRealpath,
+        prompt: providerPrompt(request, agent),
+        signal: request.signal,
+        onEvent: async (event) => {
+          try {
+            protocol.consume(event);
+          } catch (error) {
+            protocolFailure =
+              error instanceof AwslError
+                ? error
+                : providerError("Codex protocol validation failed", error);
+            throw protocolFailure;
+          }
+          await request.onRawEvent?.(event);
+        },
+      });
+      return protocol.finish(request, schema);
+    } catch (error) {
+      if (error instanceof AwslError && error.code === "CANCELLED") throw error;
+      return {
+        kind: "error",
+        error:
+          (error instanceof AwslError && error.code === "PERSISTENCE_ERROR"
+            ? error
+            : protocolFailure) ??
+          providerError("Codex process transport failed", error),
+        usage: protocol.usage,
+        ...(protocol.observation === undefined
+          ? {}
+          : { observation: protocol.observation }),
+      };
+    } finally {
+      await schemaArtifact?.dispose();
+    }
+  }
+}

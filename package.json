@@ -1,0 +1,66 @@
+{
+  "name": "awsl",
+  "version": "0.1.0",
+  "description": "JavaScript workflow runtime with a reviewed Claude Code 2.1.218 compatibility profile",
+  "license": "Apache-2.0",
+  "author": "xhinliang <xhinliang@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/XhinLiang/awsl.git"
+  },
+  "homepage": "https://github.com/XhinLiang/awsl#readme",
+  "bugs": {
+    "url": "https://github.com/XhinLiang/awsl/issues"
+  },
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "awsl": "./dist/cli/main.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "docs/compatibility/claude-code-2.1.218.md",
+    "docs/implementation/260729-real-codex-acceptance.md",
+    "sbom.cdx.json"
+  ],
+  "scripts": {
+    "pretest": "pnpm run build",
+    "prepack": "pnpm run build && pnpm run sbom",
+    "build": "tsc -p tsconfig.json",
+    "check": "pnpm exec tsc --noEmit && pnpm exec tsc -p tsconfig.test.json --noEmit && pnpm exec biome check .",
+    "sbom": "node scripts/generate-sbom.mjs",
+    "test": "vitest run",
+    "test:worker": "pnpm run build && vitest run tests/worker/sandbox.test.ts",
+    "test:package": "pnpm run build && vitest run tests/package",
+    "test:conformance": "pnpm run build && vitest run tests/conformance",
+    "awsl": "node dist/cli/main.js"
+  },
+  "dependencies": {
+    "acorn": "^8.14.1",
+    "acorn-walk": "^8.3.4",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^13.1.0",
+    "smol-toml": "^1.3.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

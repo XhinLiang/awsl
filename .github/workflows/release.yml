@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.20.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install the trusted-publishing npm client
+        run: npm install --global npm@11.5.1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME:?missing release tag}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::release tag must equal v${version}"
+            exit 1
+          fi
+          if [ "$(git rev-parse "${tag}^{commit}")" != "$GITHUB_SHA" ]; then
+            echo "::error::release tag does not identify the checked-out commit"
+            exit 1
+          fi
+
+          package_name="$(node -p "require('./package.json').name")"
+          case "$package_name" in
+            @*/*) ;;
+            *)
+              echo "::error::an owned scoped npm package name is required"
+              exit 1
+              ;;
+          esac
+
+          repository="$(node -p "const value=require('./package.json').repository; typeof value === 'string' ? value : value?.url ?? ''")"
+          expected_repository="git+https://github.com/${GITHUB_REPOSITORY}.git"
+          if [ "$repository" != "$expected_repository" ]; then
+            echo "::error::package repository must equal ${expected_repository}"
+            exit 1
+          fi
+          expected_security_url="https://github.com/${GITHUB_REPOSITORY}/security/advisories/new"
+          if ! grep -Fq "$expected_security_url" SECURITY.md; then
+            echo "::error::configure a private security channel and supported-version policy"
+            exit 1
+          fi
+          if ! grep -Fq '| `main` and latest release | Supported |' SECURITY.md ||
+             ! grep -Fq '| Older releases | Unsupported |' SECURITY.md; then
+            echo "::error::configure the supported-version policy"
+            exit 1
+          fi
+
+      - run: pnpm run check
+      - run: pnpm run test
+      - run: pnpm run build
+      - run: pnpm run test:package
+      - run: pnpm run test:conformance
+      - run: pnpm run sbom
+
+      - name: Build the release tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          artifact_dir="${RUNNER_TEMP:?}/awsl-release"
+          mkdir -p "$artifact_dir"
+          pnpm pack --pack-destination "$artifact_dir"
+          set -- "$artifact_dir"/*.tgz
+          test "$#" -eq 1
+          echo "AWSL_RELEASE_ARCHIVE=$1" >> "$GITHUB_ENV"
+
+      - name: Publish with npm trusted publishing and provenance
+        run: npm publish "$AWSL_RELEASE_ARCHIVE" --provenance --access public

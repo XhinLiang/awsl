@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "profile": "claude-code@2.1.218",
+  "evidence": {
+    "classification": "synthetic-regression",
+    "liveFixtureCapture": "not-captured",
+    "binary": {
+      "sha256": "sha256:71abaff59312c9a9b6a1d818365048b42e4e95cc521a823660eded3e0880d9b7",
+      "version": "2.1.218",
+      "platform": "darwin",
+      "architecture": "arm64",
+      "verification": "reviewed-local-static-inspection"
+    },
+    "capture": null,
+    "limitations": [
+      "not a live Claude fixture capture",
+      "binary digest does not attest this synthetic observation"
+    ]
+  },
+  "fixture": {
+    "name": "parallel-pipeline-resume",
+    "initial": {
+      "path": "tests/fixtures/oracle/parallel-pipeline-resume.initial.js",
+      "sha256": "sha256:cc523eaaf214bbe06a166684f245352ac956c85d8cb083b126439c390916d0f5"
+    },
+    "resumed": {
+      "path": "tests/fixtures/oracle/parallel-pipeline-resume.resumed.js",
+      "sha256": "sha256:16a01c9f32fae5bccca73f23be0ea5958206577de1149aae83db393c23fd3eb6"
+    },
+    "agent": {
+      "path": "tests/fixtures/oracle/oracle-no-tools.md",
+      "sha256": "sha256:aacd97c93ecdc5cc013e110a18b31f6e3add5eed46fe1a8f052ad737c909b956"
+    },
+    "args": {
+      "oracle": "AWSL_ORACLE_V1"
+    }
+  },
+  "replay": {
+    "usageSource": "synthetic",
+    "calls": [
+      {
+        "logicalId": "alpha",
+        "promptSha256": "sha256:36027362574f8bfe2ed1c699e43c2914edc598b25861b4415e501035e7ef1e96",
+        "options": {
+          "label": "alpha",
+          "phase": "setup",
+          "agentType": "oracle-no-tools"
+        },
+        "outcome": {
+          "kind": "completed",
+          "structured": false,
+          "value": "AWSL_ORACLE_ALPHA"
+        },
+        "outputTokens": 3
+      },
+      {
+        "logicalId": "beta",
+        "promptSha256": "sha256:7636c8f3f62b744aa978a3c39d25a720f4cb8c8df9dd2390c8b6af8eca4167ec",
+        "options": {
+          "label": "beta",
+          "phase": "setup",
+          "agentType": "oracle-no-tools"
+        },
+        "outcome": {
+          "kind": "completed",
+          "structured": false,
+          "value": "AWSL_ORACLE_BETA"
+        },
+        "outputTokens": 3
+      },
+      {
+        "logicalId": "beta-v2",
+        "promptSha256": "sha256:6e9beb53c1790ccdb48b486cf965bff8ecfe5d3c075ff6c085b3cd450d4328f2",
+        "options": {
+          "label": "beta-v2",
+          "phase": "setup",
+          "agentType": "oracle-no-tools"
+        },
+        "outcome": {
+          "kind": "completed",
+          "structured": false,
+          "value": "AWSL_ORACLE_BETA_V2"
+        },
+        "outputTokens": 3
+      },
+      {
+        "logicalId": "gamma",
+        "promptSha256": "sha256:0a4ec501a7bcdfaf4925b72c72cbcc913742e4c599591fa81a3ceda6d0214026",
+        "options": {
+          "label": "gamma",
+          "phase": "setup",
+          "agentType": "oracle-no-tools"
+        },
+        "outcome": {
+          "kind": "completed",
+          "structured": false,
+          "value": "AWSL_ORACLE_GAMMA"
+        },
+        "outputTokens": 3
+      }
+    ]
+  },
+  "observation": {
+    "initial": {
+      "status": "completed",
+      "workflowName": "parallel-pipeline-resume",
+      "result": {
+        "oracle": "AWSL_ORACLE_V1",
+        "parallel": ["AWSL_ORACLE_ALPHA", "AWSL_ORACLE_BETA", null],
+        "pipeline": ["AWSL_ORACLE_PIPELINE_OK", null],
+        "budget": {
+          "total": "unlimited",
+          "before": "zero",
+          "after": "positive",
+          "remaining": "infinity"
+        }
+      },
+      "phases": ["setup", "finish"],
+      "logs": [
+        "AWSL_ORACLE_SETUP",
+        "AWSL_ORACLE_EXPECTED_BRANCH_FAILURE",
+        "AWSL_ORACLE_FINISH"
+      ],
+      "calls": [
+        {
+          "logicalId": "alpha",
+          "index": 0,
+          "phase": "setup",
+          "agentType": "oracle-no-tools",
+          "origin": "live",
+          "outcome": "result"
+        },
+        {
+          "logicalId": "beta",
+          "index": 1,
+          "phase": "setup",
+          "agentType": "oracle-no-tools",
+          "origin": "live",
+          "outcome": "result"
+        }
+      ],
+      "parallel": ["AWSL_ORACLE_ALPHA", "AWSL_ORACLE_BETA", null],
+      "pipeline": ["AWSL_ORACLE_PIPELINE_OK", null],
+      "budget": {
+        "total": "unlimited",
+        "before": "zero",
+        "after": "positive",
+        "remaining": "infinity"
+      },
+      "toolUse": "none"
+    },
+    "resumed": {
+      "status": "completed",
+      "workflowName": "parallel-pipeline-resume",
+      "result": {
+        "oracle": "AWSL_ORACLE_V1",
+        "parallel": [
+          "AWSL_ORACLE_ALPHA",
+          "AWSL_ORACLE_BETA_V2",
+          "AWSL_ORACLE_GAMMA",
+          null
+        ],
+        "pipeline": ["AWSL_ORACLE_PIPELINE_OK", null],
+        "budget": {
+          "total": "unlimited",
+          "before": "zero",
+          "after": "positive",
+          "remaining": "infinity"
+        }
+      },
+      "phases": ["setup", "finish"],
+      "logs": [
+        "AWSL_ORACLE_SETUP",
+        "AWSL_ORACLE_EXPECTED_BRANCH_FAILURE",
+        "AWSL_ORACLE_FINISH"
+      ],
+      "calls": [
+        {
+          "logicalId": "alpha",
+          "index": 0,
+          "phase": "setup",
+          "agentType": "oracle-no-tools",
+          "origin": "reused",
+          "outcome": "result"
+        },
+        {
+          "logicalId": "beta-v2",
+          "index": 1,
+          "phase": "setup",
+          "agentType": "oracle-no-tools",
+          "origin": "live",
+          "outcome": "result"
+        },
+        {
+          "logicalId": "gamma",
+          "index": 2,
+          "phase": "setup",
+          "agentType": "oracle-no-tools",
+          "origin": "live",
+          "outcome": "result"
+        }
+      ],
+      "parallel": [
+        "AWSL_ORACLE_ALPHA",
+        "AWSL_ORACLE_BETA_V2",
+        "AWSL_ORACLE_GAMMA",
+        null
+      ],
+      "pipeline": ["AWSL_ORACLE_PIPELINE_OK", null],
+      "budget": {
+        "total": "unlimited",
+        "before": "zero",
+        "after": "positive",
+        "remaining": "infinity"
+      },
+      "toolUse": "none"
+    }
+  }
+}

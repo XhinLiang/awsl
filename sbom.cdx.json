@@ -1,0 +1,239 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:npm/awsl@0.1.0",
+      "type": "application",
+      "name": "awsl",
+      "version": "0.1.0",
+      "purl": "pkg:npm/awsl@0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "awsl:lockfile:sha256",
+        "value": "881eb6807eb51dc9b2ba246defb213f81675013e7f7787b911812903da973880"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:npm/acorn-walk@8.3.5",
+      "type": "library",
+      "name": "acorn-walk",
+      "version": "8.3.5",
+      "purl": "pkg:npm/acorn-walk@8.3.5",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "1c41cd7db6abb3dbf8a60a56e923b52923e47e84b4c5538cffd53390996d8e5b0766625ab3183c69792e65aed231ff2f28620186952c3e5b904aa849142a9e6f"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/acorn@8.17.0",
+      "type": "library",
+      "name": "acorn",
+      "version": "8.17.0",
+      "purl": "pkg:npm/acorn@8.17.0",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "c5141b0dbf419f00da7d8367e95c25f37f436158ea5d86f55d51ad58067591c0dcea2c002f8860dc1d5d665462b8434578ed87e778051b78a7eb6d4074445502"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/ajv-formats@3.0.1",
+      "type": "library",
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "purl": "pkg:npm/ajv-formats@3.0.1",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f2252a979d04511fae51c7514371c3a9ae84572a3776870bf20e5627714d7169aeeb621b90652e7bfa44c8b056f1518a2ae7133e0a9e92ce1f214d43038ca8c1"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/ajv@8.20.0",
+      "type": "library",
+      "name": "ajv",
+      "version": "8.20.0",
+      "purl": "pkg:npm/ajv@8.20.0",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "4e16e58be3a53a3fa230f60505505f2773a60809da4b2367e0cd6fcfd4fa1a46b926df5b6bf1c8479ea3a32eb9b58ea4c7f142179557341f35f58eff194ac118"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/commander@13.1.0",
+      "type": "library",
+      "name": "commander",
+      "version": "13.1.0",
+      "purl": "pkg:npm/commander@13.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "feb15e0a934941b852663195c0ef51155df13ea6e71114bc326210cc2b43ff397a82926e57f6cc2ee37dda81b717b77ca031071d1aee8d25cd52bf1fa639ed2b"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/fast-deep-equal@3.1.3",
+      "type": "library",
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "purl": "pkg:npm/fast-deep-equal@3.1.3",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "7f7a90f68432f63d808417bf1fd542f75c0b98a042094fe00ce9ca340606e61b303bb04b2a3d3d1dce4760dcfd70623efb19690c22200da8ad56cd3701347ce1"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/fast-uri@3.1.4",
+      "type": "library",
+      "name": "fast-uri",
+      "version": "3.1.4",
+      "purl": "pkg:npm/fast-uri@3.1.4",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f099db910e23b83caf62ce26805190aa0e32098b450ed52d9a9d90210ab5d5965ee42150e7072a9b5aea0e0021fd074cc92b819cfccc5222543591b937f02243"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/json-schema-traverse@1.0.0",
+      "type": "library",
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "purl": "pkg:npm/json-schema-traverse@1.0.0",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "34cf3f3fd9f75e35e12199f594b86415a0024ce5114178d6855e0103f4673aff31be0aadaa9017f483b89914314b1d51968e2dab37aa6f4b0e96bb9a3b2dddba"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/require-from-string@2.0.2",
+      "type": "library",
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "purl": "pkg:npm/require-from-string@2.0.2",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "5dfd2759ee91b1ece214cbbe029f5b8a251b9a996ae92f7fa7eef0ed85cffc904786b5030d48706bebc0372b9bbaa7d9593bde53ffc36151ac0c6ed128bfef13"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/smol-toml@1.7.1",
+      "type": "library",
+      "name": "smol-toml",
+      "version": "1.7.1",
+      "purl": "pkg:npm/smol-toml@1.7.1",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "3cf96cb29019e236cc06ee4330585f5060d02eefefacbe12c8144e552dfbc7cca79d598522cd553c1cf50a8f1792cdd3be921a657994f39cb80eb43e532545a1"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/yaml@2.9.0",
+      "type": "library",
+      "name": "yaml",
+      "version": "2.9.0",
+      "purl": "pkg:npm/yaml@2.9.0",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "d80be1357de66fccdde99cbb20d4ed4a9975175e475ba5a7aa3d2cad696428b729625fe03083098b2b86ab629e236605c543e376507edcb735d2c78c2ed2f870"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:npm/acorn-walk@8.3.5",
+      "dependsOn": [
+        "pkg:npm/acorn@8.17.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/acorn@8.17.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/ajv-formats@3.0.1",
+      "dependsOn": [
+        "pkg:npm/ajv@8.20.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/ajv@8.20.0",
+      "dependsOn": [
+        "pkg:npm/fast-deep-equal@3.1.3",
+        "pkg:npm/fast-uri@3.1.4",
+        "pkg:npm/json-schema-traverse@1.0.0",
+        "pkg:npm/require-from-string@2.0.2"
+      ]
+    },
+    {
+      "ref": "pkg:npm/awsl@0.1.0",
+      "dependsOn": [
+        "pkg:npm/acorn-walk@8.3.5",
+        "pkg:npm/acorn@8.17.0",
+        "pkg:npm/ajv-formats@3.0.1",
+        "pkg:npm/ajv@8.20.0",
+        "pkg:npm/commander@13.1.0",
+        "pkg:npm/smol-toml@1.7.1",
+        "pkg:npm/yaml@2.9.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/commander@13.1.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/fast-deep-equal@3.1.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/fast-uri@3.1.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/json-schema-traverse@1.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/require-from-string@2.0.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/smol-toml@1.7.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/yaml@2.9.0",
+      "dependsOn": []
+    }
+  ]
+}
