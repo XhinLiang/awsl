@@ -2,4 +2,10 @@ node_modules/
 dist/
 .tmp/
 coverage/
+/docs/private/
+/docs/superpowers/
+/docs/implementation/*-execution-record.md
+/docs/implementation/*-independent-review-record.md
+/docs/implementation/*-external-acceptance.md
+/tests/conformance/*-stat.test.ts
 /tests/fixtures/vendor/

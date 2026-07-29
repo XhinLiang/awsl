@@ -235,10 +235,14 @@ test("packed CLI installs and runs from a clean directory", async () => {
       if (path.endsWith(".map"))
         expect(await readFile(path, "utf8")).not.toContain('"sourcesContent"');
 
-    await run("pnpm", ["add", "--offline", "--ignore-scripts", archive], {
-      cwd: project,
-      timeout: 20_000,
-    });
+    await run(
+      "pnpm",
+      ["add", "--prefer-offline", "--ignore-scripts", archive],
+      {
+        cwd: project,
+        timeout: 20_000,
+      },
+    );
 
     const executable = join(project, "node_modules", ".bin", "awsl");
     const execution = await runInstalled(

@@ -316,6 +316,7 @@ switch (fixture) {
     break;
   case "hang":
     emit(init({ mcp_path: mcpPath }));
+    setInterval(() => {}, 1_000);
     await new Promise(() => {});
     break;
   default:

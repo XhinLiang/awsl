@@ -1103,18 +1103,33 @@ describe("Claude 2.1.218 stream protocol", () => {
 
   test("propagates global cancellation instead of returning an outcome", async () => {
     const controller = new AbortController();
+    let resolveStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
     const running = adapter().run(
       request("hang", {
+        onRawEvent: (event) => {
+          if (
+            (event as { type?: string; subtype?: string }).type === "system" &&
+            (event as { type?: string; subtype?: string }).subtype === "init"
+          )
+            resolveStarted();
+        },
         signal: controller.signal,
       }),
     );
-    const assertion = expect(running).rejects.toMatchObject({
-      code: "CANCELLED",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    const settled = Promise.allSettled([running]);
+    await started;
+    await new Promise((resolve) => setTimeout(resolve, 100));
     controller.abort();
 
-    await assertion;
+    expect(await settled).toMatchObject([
+      {
+        reason: { code: "CANCELLED" },
+        status: "rejected",
+      },
+    ]);
   });
 
   test("removes a private MCP artifact after cancellation", async () => {

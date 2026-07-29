@@ -69,9 +69,13 @@ test("resolves the emitted builtin from an installed package tarball", async () 
     );
     expect(archives).toHaveLength(1);
     const archive = join(packDirectory, archives[0] as string);
-    await run("pnpm", ["add", "--offline", "--ignore-scripts", archive], {
-      cwd: project,
-    });
+    await run(
+      "pnpm",
+      ["add", "--prefer-offline", "--ignore-scripts", archive],
+      {
+        cwd: project,
+      },
+    );
 
     const smoke = String.raw`
         import { createHash } from "node:crypto";
