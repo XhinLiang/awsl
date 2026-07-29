@@ -333,11 +333,14 @@ async function prepareRuntime(options: {
   const projectRoot = await resolveProjectRoot(canonical);
   const registry = await createRegistry({
     cwd: canonical,
+    provider: loaded.value.provider,
     pluginDirs: loaded.value.registry.pluginDirs,
     homeDir: options.context.homeDir,
     claudeConfigDir:
       options.context.env.CLAUDE_CONFIG_DIR ||
       `${options.context.homeDir}/.claude`,
+    codexConfigDir:
+      options.context.env.CODEX_HOME || `${options.context.homeDir}/.codex`,
   });
   const selected = loaded.value.providers[loaded.value.provider];
   const identity = await resolveProviderIdentity({

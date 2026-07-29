@@ -98,6 +98,7 @@ test("resolves the emitted builtin from an installed package tarball", async () 
 
         const registry = await createRegistry({
           cwd: process.cwd(),
+          provider: "claude",
           claudeConfigDir: join(process.cwd(), "isolated-claude"),
           homeDir: join(process.cwd(), "isolated-home"),
         });

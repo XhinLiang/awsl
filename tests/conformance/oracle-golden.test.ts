@@ -465,6 +465,7 @@ test("replays the reviewed 2.1.218-informed synthetic profile", async () => {
   const canonicalCwd = await realpath(project);
   const registry = await createRegistry({
     cwd: canonicalCwd,
+    provider: "claude",
     homeDir: home,
     claudeConfigDir: join(home, "missing"),
   });

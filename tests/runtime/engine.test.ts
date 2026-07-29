@@ -331,6 +331,7 @@ async function harness(
   const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
   const registry = await createRegistry({
     cwd: canonicalCwd,
+    provider: "claude",
     homeDir: home,
     claudeConfigDir: join(home, "missing"),
   });
@@ -374,6 +375,7 @@ Run the ${name} branch.
   const root = await resolveRootWorkflow(workflowPath, canonicalCwd);
   const registry = await createRegistry({
     cwd: canonicalCwd,
+    provider: "claude",
     homeDir: home,
     claudeConfigDir: join(home, "missing"),
   });
@@ -606,6 +608,7 @@ return { value: await agent(args.prompt), spent: budget.spent() }
       const root = await resolveRootWorkflow(rootPath, canonicalCwd);
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
         pluginDirs: [plugin],
@@ -1527,6 +1530,7 @@ return await agent("two", { agentType: "drift" })
     await mkdir(runDir);
     const registry = await createRegistry({
       cwd: repoRoot,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
@@ -1595,6 +1599,7 @@ return await agent("two", { agentType: "drift" })
       await mkdir(runDir);
       const registry = await createRegistry({
         cwd: repoRoot,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -1781,6 +1786,7 @@ return await agent(args.prompt, { isolation: "worktree" })
       );
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -1934,6 +1940,7 @@ return await agent(args.prompt, { isolation: "worktree" })
       );
       const registry = await createRegistry({
         cwd: canonicalCwd,
+        provider: "claude",
         homeDir: home,
         claudeConfigDir: join(home, "missing"),
       });
@@ -2150,6 +2157,7 @@ return await agent(args.prompt, { isolation: "worktree" })
     const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
     const registry: AgentRegistry = await createRegistry({
       cwd: canonicalCwd,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
@@ -2265,6 +2273,7 @@ return await agent(args.prompt, { isolation: "worktree" })
     const home = await mkdtemp(join(tmpdir(), "awsl-engine-home-"));
     const registry = await createRegistry({
       cwd: canonicalCwd,
+      provider: "claude",
       homeDir: home,
       claudeConfigDir: join(home, "missing"),
     });
