@@ -122,6 +122,37 @@ describe("agent registry", () => {
     });
   });
 
+  test("Claude ignores malformed Codex agent definitions", async () => {
+    const value = await layout();
+    await mkdir(join(value.projectCodex, "agents"), { recursive: true });
+    await writeFile(
+      join(value.projectCodex, "agents", "malformed.toml"),
+      'name = "unterminated',
+    );
+
+    await expect(createRegistry(options(value))).resolves.toMatchObject({
+      agents: expect.any(Array),
+    });
+  });
+
+  test("Codex ignores malformed Claude agent definitions", async () => {
+    const value = await layout();
+    await mkdir(join(value.projectClaude, "agents"), { recursive: true });
+    await writeFile(
+      join(value.projectClaude, "agents", "malformed.md"),
+      "not an agent definition",
+    );
+
+    await expect(
+      createRegistry({
+        cwd: value.cwd,
+        provider: "codex",
+        codexConfigDir: value.userCodex,
+        homeDir: join(value.root, "unused-home"),
+      }),
+    ).resolves.toMatchObject({ agents: expect.any(Array) });
+  });
+
   test("uses Codex project precedence, skips fragments, and rejects duplicate names", async () => {
     const value = await layout();
     await writeCodexAgent(value.projectCodex, "override.toml", "native");
