@@ -1204,10 +1204,13 @@ async function executeAgent(
         }),
       );
       terminal = true;
-      const error = providerError(
-        context.options.provider,
-        "provider output-token usage is indeterminate",
-      );
+      const error =
+        outcome.kind === "error"
+          ? outcome.error
+          : providerError(
+              context.options.provider,
+              "provider output-token usage is indeterminate",
+            );
       await emit(context, "call.failed", {
         callId: identity.callId,
         callSeq,

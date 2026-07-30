@@ -400,6 +400,7 @@ describe("CLI workflow execution", () => {
       "read-only",
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "-",
     ]);
     expect(invocation.prompt).toContain("CODEX_NATIVE_AUDIT_MARKER");
