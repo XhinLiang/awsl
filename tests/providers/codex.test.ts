@@ -104,6 +104,7 @@ describe("Codex adapter contract", () => {
       'model_reasoning_effort="high"',
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "-",
     ]);
   });
@@ -126,6 +127,7 @@ describe("Codex adapter contract", () => {
       'model_reasoning_effort="high"',
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "-",
     ]);
   });
@@ -152,6 +154,7 @@ describe("Codex adapter contract", () => {
       "workspace-write",
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "-",
     ]);
   });
@@ -186,6 +189,7 @@ describe("Codex adapter contract", () => {
       "--search",
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "-",
     ]);
   });
@@ -436,6 +440,7 @@ describe("Codex adapter contract", () => {
       "gpt-test",
       "exec",
       "--json",
+      "--skip-git-repo-check",
       "--output-schema",
       "/private/tmp/awsl/schema.json",
       "-",
@@ -740,6 +745,7 @@ describe("Codex adapter contract", () => {
         'model_reasoning_effort="high"',
         "exec",
         "--json",
+        "--skip-git-repo-check",
         "-",
       ],
       cwd: "/workspace",
@@ -1555,7 +1561,12 @@ describe("Codex adapter contract", () => {
       }),
     );
 
-    expect(fixture.calls[0]?.argv).toEqual(["exec", "--json", "-"]);
+    expect(fixture.calls[0]?.argv).toEqual([
+      "exec",
+      "--json",
+      "--skip-git-repo-check",
+      "-",
+    ]);
     expect(fixture.calls[0]?.prompt).toBe(
       [
         '<awsl-agent name="reviewer">',

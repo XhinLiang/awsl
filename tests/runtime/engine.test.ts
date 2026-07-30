@@ -1117,6 +1117,38 @@ return await agent("two", { agentType: "drift" })
     });
   });
 
+  test("preserves the provider error when failed usage is indeterminate", async () => {
+    const provider = new RecordingProvider(() => ({
+      kind: "error",
+      error: new AwslError("PROVIDER_ERROR", "provider rate limited", {
+        provider: "codex",
+        recoverable: false,
+      }),
+      usage: { inputTokens: 2, complete: false },
+    }));
+    const store = new RecordingStore();
+    const options = await harness("basic-agent.js", provider, store);
+
+    await expect(
+      runWorkflow({
+        ...options,
+        runId: "failed-usage-indeterminate",
+        attemptId: "attempt-0",
+        attemptSeq: 0,
+        args: { prompt: "hello" },
+        lockOwner,
+      }),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_ERROR",
+      message: "provider rate limited",
+    });
+    expect(
+      store.records.filter(
+        (record) => record.kind === "call" && record.state === "indeterminate",
+      ),
+    ).toHaveLength(1);
+  });
+
   test("rejects a proxied provider outcome without invoking any trap", async () => {
     let trapCalls = 0;
     const trap = () => {

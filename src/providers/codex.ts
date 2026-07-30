@@ -90,7 +90,7 @@ export function buildCodexArgv(
       );
     argv.push("--sandbox", options.sandboxMode);
   }
-  argv.push("exec", "--json");
+  argv.push("exec", "--json", "--skip-git-repo-check");
   if (schemaPath !== undefined) {
     argv.push("--output-schema", schemaPath);
   }
