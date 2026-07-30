@@ -4,11 +4,11 @@
   "version": 1,
   "metadata": {
     "component": {
-      "bom-ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
+      "bom-ref": "pkg:npm/%40xhinliang/awsl@0.1.1",
       "type": "application",
       "name": "@xhinliang/awsl",
-      "version": "0.1.0",
-      "purl": "pkg:npm/%40xhinliang/awsl@0.1.0",
+      "version": "0.1.1",
+      "purl": "pkg:npm/%40xhinliang/awsl@0.1.1",
       "licenses": [
         {
           "license": {
@@ -171,7 +171,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
+      "ref": "pkg:npm/%40xhinliang/awsl@0.1.1",
       "dependsOn": [
         "pkg:npm/acorn-walk@8.3.5",
         "pkg:npm/acorn@8.17.0",

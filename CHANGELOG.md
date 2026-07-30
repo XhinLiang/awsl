@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.1 - 2026-07-30
+
+### Fixed
+
+- Allow Codex workflows to run from non-Git working directories.
+- Preserve the original provider failure when output-token usage is
+  indeterminate.
+
 ## 0.1.0 - 2026-07-30
 
 ### Added
