@@ -31,6 +31,10 @@ test("generates a deterministic production-only CycloneDX SBOM", async () => {
   const root = await mkdtemp(join(tmpdir(), "awsl-sbom-"));
   const firstPath = join(root, "first.cdx.json");
   const secondPath = join(root, "second.cdx.json");
+  const packageManifest = JSON.parse(
+    await readFile(join(repositoryRoot, "package.json"), "utf8"),
+  ) as { readonly version: string };
+  const rootPurl = `pkg:npm/%40xhinliang/awsl@${packageManifest.version}`;
 
   try {
     for (const output of [firstPath, secondPath])
@@ -73,11 +77,11 @@ test("generates a deterministic production-only CycloneDX SBOM", async () => {
       version: 1,
       metadata: {
         component: {
-          "bom-ref": "pkg:npm/%40xhinliang/awsl@0.1.0",
+          "bom-ref": rootPurl,
           type: "application",
           name: "@xhinliang/awsl",
-          version: "0.1.0",
-          purl: "pkg:npm/%40xhinliang/awsl@0.1.0",
+          version: packageManifest.version,
+          purl: rootPurl,
           licenses: [{ license: { id: "Apache-2.0" } }],
         },
         properties: [
