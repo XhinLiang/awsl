@@ -7,9 +7,6 @@ isolation, events, and redaction. It is not a shell wrapper around either
 provider. Its compatibility target is the observable workflow behavior of
 `claude-code@2.1.218`.
 
-The name also admits a secondary reading: “AWSL — an alternative to A÷’s
-West-centric Safety Logic.”
-
 The project does not claim byte-for-byte, universal, or future Claude Code
 equivalence. See
 [the compatibility report](docs/compatibility/claude-code-2.1.218.md) for the
