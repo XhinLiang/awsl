@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Runnable research, code-review, worktree, and durable-resume example
+  workflows with offline contract tests.
+- Public positioning, migration, contribution, and community guidance.
+
+### Changed
+
+- Improve npm discovery metadata and the repository onboarding experience.
+
 ## 0.1.1 - 2026-07-30
 
 ### Fixed

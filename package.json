@@ -1,7 +1,19 @@
 {
   "name": "@xhinliang/awsl",
   "version": "0.1.1",
-  "description": "Agentic Workflow Steering Layer for trusted JavaScript agent workflows",
+  "description": "Durable JavaScript workflows for coding agents — Codex or Claude, with parallelism, resume, budgets, and Git worktrees",
+  "keywords": [
+    "agentic-workflows",
+    "coding-agents",
+    "workflow-orchestration",
+    "workflow-engine",
+    "codex",
+    "claude-code",
+    "multi-agent",
+    "resumable-workflows",
+    "git-worktree",
+    "typescript"
+  ],
   "license": "Apache-2.0",
   "author": "xhinliang <xhinliang@gmail.com>",
   "repository": {
@@ -35,9 +47,14 @@
   "files": [
     "dist",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "SECURITY.md",
+    "docs/assets/awsl-social-preview.png",
+    "docs/case-studies/reporting-workflow.md",
     "docs/compatibility/claude-code-2.1.218.md",
     "docs/implementation/260729-real-codex-acceptance.md",
+    "docs/why-awsl.md",
+    "examples",
     "sbom.cdx.json"
   ],
   "scripts": {

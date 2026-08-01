@@ -1,0 +1,56 @@
+name: Feature request
+description: Propose a focused addition to the awsl runtime or workflow contract
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        awsl keeps runtime mechanics separate from application policy. Describe the workflow problem first so the proposed boundary can be evaluated.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I checked existing issues and the current compatibility report.
+          required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Workflow use case
+      description: What workflow cannot be expressed or operated reliably today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed contract
+      description: Show the smallest CLI, configuration, event, or JavaScript API shape that would solve the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Runtime boundary
+      description: Explain why this belongs in awsl rather than in application workflow code.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and recovery impact
+      description: Note effects on provider parity, durable state, resume, budgets, events, permissions, or worktrees.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include application-level workarounds or smaller contract changes.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to help implement or test this change.

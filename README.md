@@ -1,18 +1,115 @@
 # awsl
 
-awsl (Agentic Workflow Steering Layer) is a standalone runtime and CLI for
-trusted JavaScript agent workflows. It loads a small workflow DSL, schedules
-Codex or Claude calls, and owns shared budgeting, durable resume, Git worktree
-isolation, events, and redaction. It is not a shell wrapper around either
-provider. Its compatibility target is the observable workflow behavior of
-`claude-code@2.1.218`.
+![awsl — Reliable workflows for coding agents](docs/assets/awsl-social-preview.png)
 
-The project does not claim byte-for-byte, universal, or future Claude Code
-equivalence. See
-[the compatibility report](docs/compatibility/claude-code-2.1.218.md) for the
-evidence behind each verified, partial, or unsupported behavior.
+[![npm](https://img.shields.io/npm/v/@xhinliang/awsl?color=9adf5b)](https://www.npmjs.com/package/@xhinliang/awsl)
+[![CI](https://github.com/XhinLiang/awsl/actions/workflows/ci.yml/badge.svg)](https://github.com/XhinLiang/awsl/actions/workflows/ci.yml)
+[![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-9adf5b)](package.json)
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-9adf5b)](LICENSE)
 
-## Requirements
+> **The model is the worker. awsl is the runtime.**
+
+Write trusted JavaScript workflows once, run them with Codex or Claude, and
+resume them after interruption. awsl supplies the unglamorous runtime pieces
+that multi-agent scripts usually rebuild: bounded parallelism, shared budgets,
+durable journals, isolated Git worktrees, versioned events, and redaction.
+
+awsl runs the provider CLIs you already use. It is local, inspectable, and
+deliberately smaller than a general-purpose agent framework.
+
+## Quick start
+
+Install awsl and check the local provider setup:
+
+```bash
+npm install --global @xhinliang/awsl
+awsl doctor
+```
+
+`doctor` reports every provider independently. A `degraded` result is expected
+when an unused provider is not installed; the provider you select must pass its
+checks.
+
+Create `review.js`:
+
+```js
+export const meta = {
+  name: "review",
+  description: "Ask two reviewers and synthesize their findings",
+  phases: [
+    { title: "review", detail: "Run independent reviews" },
+    { title: "synthesize", detail: "Produce one answer" },
+  ],
+}
+
+phase("review")
+const reviews = await parallel([
+  () => agent(`Review for correctness: ${args.request}`, { label: "correctness" }),
+  () => agent(`Review for maintainability: ${args.request}`, { label: "maintainability" }),
+])
+
+if (reviews.some((review) => review === null)) {
+  throw new Error("a required review failed")
+}
+
+phase("synthesize")
+return agent(`Synthesize these reviews:\n${reviews.join("\n\n")}`, {
+  label: "synthesis",
+})
+```
+
+Run the same workflow with either supported provider:
+
+```bash
+awsl run review.js \
+  --provider codex \
+  --args '{"request":"the authentication module"}'
+
+awsl run review.js \
+  --provider claude \
+  --args '{"request":"the authentication module"}'
+```
+
+One provider is pinned for the complete workflow tree. awsl never silently
+falls back to another provider during a run.
+
+## Why awsl
+
+Provider CLIs are excellent workers. A workflow that coordinates many calls
+still needs runtime semantics of its own.
+
+| Without a workflow runtime | With awsl |
+|---|---|
+| Hand-written process and concurrency glue | `agent()`, `parallel()`, and `pipeline()` |
+| Start over after interruption | Durable run state and longest-prefix resume |
+| Shared checkout collisions | Per-call isolated Git worktrees |
+| Ad hoc logs and parsing | Stable JSON, JSONL events, and terminal envelopes |
+| Provider-specific orchestration | One JavaScript workflow for Codex or Claude |
+| Unbounded or invisible spend | Shared output-token budgets and call limits |
+
+```text
+workflow.js ──> awsl runtime ──┬──> Codex CLI
+                │              └──> Claude Code
+                └── journal · budget · events · worktrees
+```
+
+[Read why awsl exists](docs/why-awsl.md), including when a direct provider CLI
+or a general-purpose distributed workflow engine is the better choice.
+
+## Example workflows
+
+- [`research-panel.js`](examples/research-panel.js) — independent research and synthesis
+- [`parallel-code-review.js`](examples/parallel-code-review.js) — parallel specialist review
+- [`worktree-refactor.js`](examples/worktree-refactor.js) — isolated coding-agent worktrees
+- [`resume-after-failure.js`](examples/resume-after-failure.js) — stable labels and durable reuse
+
+The
+[reporting migration case study](docs/case-studies/reporting-workflow.md)
+shows how a real reporting application moved provider-neutral scheduling into
+awsl while keeping collection, validation, persistence, and delivery in the
+domain layer.
+
+## Requirements and compatibility
 
 - Node.js 22 or newer
 - Git for `isolation: "worktree"`
@@ -21,15 +118,13 @@ evidence behind each verified, partial, or unsupported behavior.
   - Claude Code `2.1.218`
 
 Provider versions are exact compatibility inputs. `awsl doctor` and run
-preparation reject other versions; this release does not claim compatibility
-with later provider versions.
+preparation reject other versions. This release targets the observable workflow
+behavior of `claude-code@2.1.218`; it does not claim byte-for-byte, universal,
+or future Claude Code equivalence.
 
-Install from the public npm registry:
-
-```bash
-npm install --global @xhinliang/awsl
-awsl --help
-```
+See the
+[compatibility report](docs/compatibility/claude-code-2.1.218.md) for the
+evidence behind each verified, partial, or unsupported behavior.
 
 From a source checkout:
 
@@ -39,45 +134,6 @@ pnpm install --frozen-lockfile
 pnpm run build
 pnpm awsl --help
 ```
-
-The package name is `@xhinliang/awsl`; the installed executable is `awsl`.
-
-## Quick start
-
-Create `example.js`:
-
-```js
-export const meta = {
-  name: "example",
-  description: "Run two independent agents",
-  phases: [
-    { title: "research", detail: "Collect two answers" },
-    { title: "finish", detail: "Return an ordered result" },
-  ],
-}
-
-phase("research")
-const answers = await parallel([
-  () => agent("Return exactly FIRST", { label: "first" }),
-  () => agent("Return exactly SECOND", { label: "second" }),
-])
-
-phase("finish")
-log("research complete")
-return { answers, spent: budget.spent() }
-```
-
-Run it:
-
-```bash
-awsl example.js \
-  --provider codex \
-  --args '{"request":"demo"}' \
-  --format json
-```
-
-The default provider is Codex. One provider is pinned for the complete workflow
-tree; awsl does not fall back from one provider to another during a run.
 
 ## CLI
 
@@ -297,6 +353,9 @@ git diff --check
 
 CI runs the release gate on Node 22 for Ubuntu and macOS. Oracle capture is
 explicitly opt-in and is never run by CI.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and the
+evidence expected for compatibility changes.
 
 The generated `sbom.cdx.json` is a deterministic CycloneDX 1.6 inventory of the
 production dependency closure in `pnpm-lock.yaml`. It describes the release
