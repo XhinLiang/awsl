@@ -171,9 +171,17 @@ test("packed CLI installs and runs from a clean directory", async () => {
         "package/README.md",
         "package/LICENSE",
         "package/CHANGELOG.md",
+        "package/CONTRIBUTING.md",
         "package/SECURITY.md",
+        "package/docs/assets/awsl-social-preview.png",
+        "package/docs/case-studies/reporting-workflow.md",
         "package/docs/compatibility/claude-code-2.1.218.md",
         "package/docs/implementation/260729-real-codex-acceptance.md",
+        "package/docs/why-awsl.md",
+        "package/examples/parallel-code-review.js",
+        "package/examples/research-panel.js",
+        "package/examples/resume-after-failure.js",
+        "package/examples/worktree-refactor.js",
         "package/sbom.cdx.json",
         "package/dist/index.js",
         "package/dist/index.d.ts",
@@ -187,10 +195,15 @@ test("packed CLI installs and runs from a clean directory", async () => {
           entry === "package/README.md" ||
           entry === "package/LICENSE" ||
           entry === "package/CHANGELOG.md" ||
+          entry === "package/CONTRIBUTING.md" ||
           entry === "package/SECURITY.md" ||
+          entry === "package/docs/assets/awsl-social-preview.png" ||
+          entry === "package/docs/case-studies/reporting-workflow.md" ||
           entry === "package/docs/compatibility/claude-code-2.1.218.md" ||
           entry ===
             "package/docs/implementation/260729-real-codex-acceptance.md" ||
+          entry === "package/docs/why-awsl.md" ||
+          entry.startsWith("package/examples/") ||
           entry === "package/sbom.cdx.json" ||
           entry.startsWith("package/dist/"),
       ),
@@ -206,10 +219,14 @@ test("packed CLI installs and runs from a clean directory", async () => {
       timeout: 20_000,
     });
     const packageRoot = join(extracted, "package");
-    await expectRelativeMarkdownLinksInPackage(
-      packageRoot,
+    for (const markdownPath of [
+      join(packageRoot, "README.md"),
+      join(packageRoot, "CONTRIBUTING.md"),
+      join(packageRoot, "docs", "why-awsl.md"),
+      join(packageRoot, "docs", "case-studies", "reporting-workflow.md"),
       join(packageRoot, "docs", "compatibility", "claude-code-2.1.218.md"),
-    );
+    ])
+      await expectRelativeMarkdownLinksInPackage(packageRoot, markdownPath);
     const packagedText = (
       await Promise.all(
         (

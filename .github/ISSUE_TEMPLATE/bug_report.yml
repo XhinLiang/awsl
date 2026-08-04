@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible problem in awsl
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve awsl. For security vulnerabilities, use [private vulnerability reporting](https://github.com/XhinLiang/awsl/security/advisories/new) instead of a public issue. Remove credentials, private prompts, raw provider transcripts, and sensitive paths from every field below.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I reproduced this with a trusted workflow and a provider version supported by the current compatibility report.
+          required: true
+        - label: I checked existing issues and removed sensitive data from this report.
+          required: true
+  - type: input
+    id: awsl-version
+    attributes:
+      label: awsl version
+      description: Output of `awsl --version`.
+      placeholder: 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, architecture, and Node.js version.
+      placeholder: macOS 15 arm64, Node.js 22.20.0
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Codex CLI
+        - Claude Code
+        - Fixture provider
+        - Not provider-specific
+    validations:
+      required: true
+  - type: input
+    id: provider-version
+    attributes:
+      label: Provider version
+      description: Include the exact executable version, or write `not applicable`.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Minimal workflow and invocation
+      description: Provide the smallest trusted workflow and command that reproduce the issue. Replace sensitive arguments with inert values.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the terminal error code or sanitized event sequence when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add sanitized logs, run-state observations, or a minimal repository link if they help reproduce the issue.

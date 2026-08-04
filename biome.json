@@ -3,6 +3,7 @@
   "files": {
     "ignore": [
       "dist",
+      "examples/*.js",
       "sbom.cdx.json",
       "tests/fixtures/oracle/*.js",
       "tests/fixtures/workflows"
