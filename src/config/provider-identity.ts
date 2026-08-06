@@ -15,6 +15,22 @@ export {
 } from "./provider-version-process.js";
 
 export const PROVIDER_VERSION_STREAM_LIMIT_BYTES = 64 * 1024;
+const SEMVER_CORE =
+  "(?:0|[1-9][0-9]{0,5})\\.(?:0|[1-9][0-9]{0,5})\\.(?:0|[1-9][0-9]{0,5})";
+const NORMALIZED_PROVIDER_VERSION = new RegExp(`^${SEMVER_CORE}$`, "u");
+const CODEX_VERSION_BANNER = new RegExp(`^codex-cli (${SEMVER_CORE})$`, "u");
+const CLAUDE_VERSION_BANNER = new RegExp(
+  `^(${SEMVER_CORE}) \\(Claude Code\\)$`,
+  "u",
+);
+const VERIFIED_PROVIDER_VERSIONS: Readonly<
+  Record<ProviderId, ReadonlySet<string>>
+> = Object.freeze({
+  codex: new Set(["0.145.0", "0.146.0"]),
+  claude: new Set(["2.1.218"]),
+});
+
+export type ProviderVersionSupport = "verified" | "unverified";
 
 export interface ProviderVersionProbeInput {
   readonly executableRealpath: string;
@@ -297,21 +313,34 @@ export function validateNormalizedProviderVersion(
   value: unknown,
 ): string {
   if (
-    (provider === "codex" && (value === "0.145.0" || value === "0.146.0")) ||
-    (provider === "claude" && value === "2.1.218")
+    (provider === "codex" || provider === "claude") &&
+    typeof value === "string" &&
+    NORMALIZED_PROVIDER_VERSION.test(value)
   )
     return value;
   return compatibilityError(provider, "provider version is incompatible");
+}
+
+export function providerVersionSupport(
+  provider: ProviderId,
+  version: string,
+): ProviderVersionSupport {
+  const normalized = validateNormalizedProviderVersion(provider, version);
+  return VERIFIED_PROVIDER_VERSIONS[provider].has(normalized)
+    ? "verified"
+    : "unverified";
 }
 
 export function normalizeProviderVersionBanner(
   provider: ProviderId,
   value: string,
 ): string {
-  if (provider === "codex" && value === "codex-cli 0.145.0") return "0.145.0";
-  if (provider === "codex" && value === "codex-cli 0.146.0") return "0.146.0";
-  if (provider === "claude" && value === "2.1.218 (Claude Code)")
-    return "2.1.218";
+  const match =
+    provider === "codex"
+      ? CODEX_VERSION_BANNER.exec(value)
+      : CLAUDE_VERSION_BANNER.exec(value);
+  if (match?.[1] !== undefined)
+    return validateNormalizedProviderVersion(provider, match[1]);
   return compatibilityError(provider, "provider version is incompatible");
 }
 

@@ -1,7 +1,10 @@
 import { isAbsolute } from "node:path";
 import { isProxy } from "node:util/types";
 
-import { COMPATIBILITY_PROFILE } from "../compat/profile.js";
+import {
+  LEGACY_COMPATIBILITY_PROFILE,
+  WORKFLOW_ABI,
+} from "../compat/profile.js";
 import { AwslError } from "../core/errors.js";
 import type { ProviderId, ProviderIdentity } from "../core/types.js";
 import {
@@ -44,7 +47,9 @@ export type RunSourceIdentityV1 =
 
 interface ProviderPinCommon {
   readonly provider: ProviderId;
-  readonly compatibilityProfile: typeof COMPATIBILITY_PROFILE.id;
+  readonly compatibilityProfile:
+    | typeof WORKFLOW_ABI.id
+    | typeof LEGACY_COMPATIBILITY_PROFILE.id;
   readonly executableRealpath: string;
   readonly executableVersion: string;
   readonly explicitDefaultModel: string | null;
@@ -484,6 +489,14 @@ function providerVersion(provider: ProviderId, value: unknown): string {
   }
 }
 
+function compatibilityProfile(
+  value: unknown,
+): ProviderPinCommon["compatibilityProfile"] {
+  if (value !== WORKFLOW_ABI.id && value !== LEGACY_COMPATIBILITY_PROFILE.id)
+    configError("provider pin compatibilityProfile is invalid");
+  return value;
+}
+
 function providerProfile(provider: ProviderId, value: unknown): string | null {
   if (value === null) return null;
   if (provider !== "codex")
@@ -572,8 +585,9 @@ function parsePinCommon(
   const provider = input.provider;
   if (provider !== "codex" && provider !== "claude")
     configError("provider pin provider is invalid");
-  if (input.compatibilityProfile !== COMPATIBILITY_PROFILE.id)
-    configError("provider pin compatibilityProfile is invalid");
+  const parsedCompatibilityProfile = compatibilityProfile(
+    input.compatibilityProfile,
+  );
 
   const explicitDefaultModel = nullableText(
     input.explicitDefaultModel,
@@ -597,7 +611,7 @@ function parsePinCommon(
 
   return {
     provider,
-    compatibilityProfile: COMPATIBILITY_PROFILE.id,
+    compatibilityProfile: parsedCompatibilityProfile,
     executableRealpath: absoluteLexicalPath(
       input.executableRealpath,
       "provider pin executableRealpath",
@@ -760,7 +774,7 @@ export async function createProviderPin(
   return parseProviderPinV2({
     version: 2,
     provider: config.provider,
-    compatibilityProfile: COMPATIBILITY_PROFILE.id,
+    compatibilityProfile: WORKFLOW_ABI.id,
     executableRealpath: identity.executableRealpath,
     executableVersion: identity.version,
     explicitDefaultModel,
@@ -915,7 +929,9 @@ export function verifyAndHydrateResumePin(
     ["provider", storedPin.provider === currentPin.provider],
     [
       "compatibilityProfile",
-      storedPin.compatibilityProfile === currentPin.compatibilityProfile,
+      storedPin.compatibilityProfile === currentPin.compatibilityProfile ||
+        (storedPin.compatibilityProfile === LEGACY_COMPATIBILITY_PROFILE.id &&
+          currentPin.compatibilityProfile === WORKFLOW_ABI.id),
     ],
     [
       "executableRealpath",

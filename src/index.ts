@@ -1,4 +1,7 @@
-export { COMPATIBILITY_PROFILE as COMPAT_PROFILE } from "./compat/profile.js";
+export {
+  LEGACY_COMPATIBILITY_PROFILE as COMPAT_PROFILE,
+  WORKFLOW_ABI,
+} from "./compat/profile.js";
 
 export { AwslError } from "./core/errors.js";
 export { WorkerHost } from "./worker/host.js";

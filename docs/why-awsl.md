@@ -109,9 +109,11 @@ events. It is also useful when the same workflow should select Codex or Claude
 at run start without duplicating orchestration code.
 
 Choose another layer when you need untrusted-code isolation, a distributed
-queue, cross-provider fallback during a run, native Windows execution, or
-compatibility with arbitrary provider versions. Application-specific scripts
-remain simpler for short, disposable, single-call tasks.
+queue, cross-provider fallback during a run, or native Windows execution.
+Provider protocol changes still require adapter coverage even though awsl does
+not reject new releases solely because their patch version changed.
+Application-specific scripts remain simpler for short, disposable, single-call
+tasks.
 
 ## Evidence and limits
 
@@ -124,5 +126,5 @@ proof of compatibility:
 - [SECURITY.md](../SECURITY.md) defines the supported versions and reporting channel.
 
 Version `0.1.1` is published. Authenticated Claude workflow acceptance remains
-an evidence gap, and the supported provider versions remain intentionally
-exact rather than forward-compatible claims.
+an evidence gap. The Workflow ABI is owned by awsl; provider versions without
+committed protocol evidence are identified as unverified rather than rejected.

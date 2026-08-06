@@ -5,7 +5,7 @@ import { type Node, type Program, parse } from "acorn";
 import { AwslError } from "../core/errors.js";
 import { DeterminismError, assertDeterministic } from "./determinism.js";
 import { PureLiteralError, evaluateLiteral } from "./literal.js";
-import { COMPATIBILITY_PROFILE } from "./profile.js";
+import { WORKFLOW_ABI } from "./profile.js";
 
 type AstNode = Node & Record<string, unknown>;
 
@@ -24,6 +24,7 @@ export interface CompiledWorkflowMeta {
 }
 
 export interface CompiledWorkflow {
+  workflowAbi: typeof WORKFLOW_ABI.id;
   meta: CompiledWorkflowMeta;
   code: string;
   filename: string;
@@ -132,9 +133,7 @@ export function compileWorkflow(
   source: string,
   filename: string,
 ): CompiledWorkflow {
-  if (
-    Buffer.byteLength(source, "utf8") > COMPATIBILITY_PROFILE.maxSourceBytes
-  ) {
+  if (Buffer.byteLength(source, "utf8") > WORKFLOW_ABI.maxSourceBytes) {
     throw compatibilityError("workflow source exceeds the 512 KiB limit");
   }
 
@@ -161,6 +160,7 @@ export function compileWorkflow(
     const meta = metadataFrom(evaluateLiteral(declarator.init as AstNode));
     const body = blankMetadata(source, first.start, first.end);
     return {
+      workflowAbi: WORKFLOW_ABI.id,
       meta,
       code: `(async function __awslWorkflow__() {"use strict";${body}\n}).call(undefined)`,
       filename,

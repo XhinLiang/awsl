@@ -237,7 +237,7 @@ function snapshotAgentPolicy(
       permissionMode.includes("\0"))
   ) {
     throw compatibilityError(
-      "Claude Code 2.1.218 does not support the requested permission mode",
+      "the Claude provider protocol does not support the requested permission mode",
     );
   }
   if (permissionModePresent) policy.permissionMode = permissionMode as string;
@@ -250,7 +250,7 @@ function validateAgentPolicy(
   if (request.model !== undefined) assertCliValue(request.model, "model");
   if (request.effort !== undefined && !CLAUDE_EFFORT_SET.has(request.effort)) {
     throw compatibilityError(
-      `Claude Code 2.1.218 does not support effort "${request.effort}"`,
+      `the Claude provider protocol does not support effort "${request.effort}"`,
     );
   }
   if (request.schema !== undefined && !isRecord(request.schema)) {

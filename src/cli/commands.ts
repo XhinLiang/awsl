@@ -12,7 +12,10 @@ import {
 } from "../compat/agent-registry.js";
 import { loadConfig } from "../config/load.js";
 import { canonicalCwd, resolveProjectRoot } from "../config/paths.js";
-import { resolveProviderIdentity } from "../config/provider-identity.js";
+import {
+  providerVersionSupport,
+  resolveProviderIdentity,
+} from "../config/provider-identity.js";
 import {
   type ProviderPinV2,
   type RunSourceIdentityV1,
@@ -836,6 +839,7 @@ async function workflowInspectCommand(
       reference: root.reference,
       realpath: root.realpath,
       sha256: root.sha256,
+      workflowAbi: root.workflowAbi,
       meta: root.meta,
     },
     rawOptions.format,
@@ -875,7 +879,11 @@ async function doctorCommand(
         cwd,
         env: context.env,
       });
-      return { available: true, version: identity.version };
+      return {
+        available: true,
+        version: identity.version,
+        support: providerVersionSupport(id, identity.version),
+      };
     } catch (error) {
       return {
         available: false,
@@ -909,12 +917,16 @@ async function doctorCommand(
     version: process.versions.node,
   };
   const checks = { node, git, codex, claude };
+  const selectedProvider = loaded.value.provider;
+  const selected = checks[selectedProvider];
   await writeValue(
     context,
     {
-      status: Object.values(checks).every((check) => check.available)
-        ? "ok"
-        : "degraded",
+      status:
+        node.available && git.available && selected.available
+          ? "ok"
+          : "degraded",
+      selectedProvider,
       checks,
     },
     rawOptions.format,

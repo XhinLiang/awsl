@@ -407,8 +407,8 @@ describe("Codex adapter contract", () => {
       "COMPATIBILITY_ERROR",
     ],
     [
-      "foreign normalized version",
-      { ...identity, version: "9.9.9" },
+      "malformed normalized version",
+      { ...identity, version: "9.9" },
       "COMPATIBILITY_ERROR",
     ],
   ] as const)(

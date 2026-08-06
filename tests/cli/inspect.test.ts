@@ -55,6 +55,7 @@ describe("CLI workflow inspection", () => {
       ),
     ).resolves.toBe(0);
     expect(JSON.parse(cli.output().stdout)).toMatchObject({
+      workflowAbi: "awsl-workflow@1",
       meta: { name: "basic", description: "basic workflow" },
       sha256: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
@@ -81,6 +82,7 @@ describe("CLI workflow inspection", () => {
       version: 1,
       type: "command.completed",
       data: {
+        workflowAbi: "awsl-workflow@1",
         meta: { name: "basic" },
       },
     });

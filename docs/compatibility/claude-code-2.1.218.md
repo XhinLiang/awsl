@@ -2,21 +2,25 @@
 
 ## TL;DR
 
-- awsl records observable workflow behavior for the pinned Claude Code profile; it does not claim byte-for-byte or future-version compatibility.
+- awsl owns the stable `awsl-workflow@1` Workflow ABI; Claude Code 2.1.218 is
+  the original behavioral oracle, not a required provider patch version.
 - An independently authored 19-call fixture exercises public orchestration, phase accounting, event ordering, durable state, and side-effect isolation.
 - Real-provider evidence remains limited to the exact Codex scenarios and versions stated below; authenticated Claude evidence is still absent.
 
-**Profile:** `claude-code@2.1.218`
+**Workflow ABI:** `awsl-workflow@1`
 
-**Report date:** 2026-08-01
+**Original oracle:** `claude-code@2.1.218`
+
+**Report date:** 2026-08-06
 
 **Release state:** `@xhinliang/awsl@0.1.1` is published on npm and GitHub.
 
 **Overall status:** `partial`
 
-awsl implements the observable JavaScript workflow behaviors listed below. This
-report does not claim byte-for-byte equivalence, compatibility with future
-Claude Code releases, or equivalence for rows marked `partial` or `gap`.
+awsl implements the observable JavaScript workflow behaviors listed below and
+normalizes structurally compatible files to its own ABI. This report does not
+claim byte-for-byte equivalence, provider-protocol compatibility without the
+stated evidence, or equivalence for rows marked `partial` or `gap`.
 
 Statuses:
 
@@ -51,7 +55,7 @@ Evidence types:
 | Text and schema `agent()` results | `verified` | `static`, `fixture-provider` | `tests/runtime/engine.test.ts` — `validates structured results again before completing the call`; `tests/providers/schema.test.ts` — `rejects workflow-controlled regular expressions`, `rejects workflow-controlled schema references`; `tests/cli/run.test.ts` — `runs a real Codex JSONL protocol fixture and includes result in completion` | Workflow-controlled regex keywords and schema references are rejected to avoid coordinator-side ReDoS. |
 | Project and namespaced-plugin child workflows | `verified` | `static` | `tests/runtime/engine.test.ts` — `runs project and namespaced plugin workflows in the parent run`, `shares budget, counters, run identity, and a forced child phase` | Parent run identity, provider pin, shared budget, forced child phase, and registry provenance are checked. |
 | Nested-workflow depth and shared provider/semaphore/budget/call cap | `verified` | `static` | `tests/runtime/engine.test.ts` — `rejects a grandchild before launching an agent`, `enforces the shared 1000-call cap before replaying a cached child call`; `tests/runtime/scheduler.test.ts` — `never exceeds its limit and admits work in FIFO order` | Grandchildren fail before provider launch. |
-| Fixed provider identity and no provider fallback | `verified` | `static`, `fixture-provider` | `tests/config/provider-identity.test.ts` — `normalizes only the exact trimmed banners and rejects controls, BOM, and foreign versions`; `tests/providers/process.test.ts` — `uses exact argv and cwd, inherits env, and keeps hostile text off a shell`; `tests/runtime/engine.test.ts` — `rejects a resume pin mismatch before locking, replay, or provider use` | Executable, exact supported version, cwd, sources, model policy, and fingerprints are pinned. |
+| Fixed provider identity and no provider fallback | `verified` | `static`, `fixture-provider` | `tests/config/provider-identity.test.ts` — `normalizes branded semantic versions without coupling runtime support to a patch release`; `tests/providers/process.test.ts` — `uses exact argv and cwd, inherits env, and keeps hostile text off a shell`; `tests/runtime/engine.test.ts` — `rejects a resume pin mismatch before locking, replay, or provider use` | New runs accept branded semantic versions. The selected executable and exact observed version remain pinned for resume. |
 | Configured private native-model pinning | `verified` | `static` | `tests/config/provider-pin.test.ts` — `captures configured native models for a discovered default`, `upgrades a legacy V1 base-native default but rejects a downgrade`; `tests/runtime/engine.test.ts` — `rejects a legacy V1 pin for a fresh run before locking or provider use`, `durably discovers and resumes a configured native default`, `upgrades a V1 pin to V2 before a live resumed call` | Provider Pin V2 persists the sorted configured-native set. V1 is legacy-read-only and upgrades only after shared fingerprints match; V2-to-V1 is rejected. |
 | Output-token budget, bounded active-call overshoot, and 1,000-call cap | `verified` | `static` | `tests/runtime/budget.test.ts` — `allows an active completion to overshoot and gates only later work`; `tests/runtime/engine.test.ts` — `enforces the shared 1000-call cap before replaying a cached child call` | Budget is charged from output tokens and shared across nested work. |
 | Durable state, bounded streams, append-only journal, and longest-prefix replay | `verified` | `static` | `tests/runtime/engine.test.ts` — `writes a validator-clean file journal and resumes its longest prefix`; `tests/store/run-store.test.ts` — `strictly and boundedly reads run, result, and lock snapshots`; `tests/store/run-store-fake-ops.test.ts` — `never truncates a valid final stream record after LF repair I/O fails` | Matching read/write limits and bounded tail repair are asserted. |
@@ -76,12 +80,14 @@ git diff --check
 
 ## Provider and oracle evidence
 
-awsl accepts exactly Codex CLI `0.145.0` or `0.146.0` and Claude Code
-`2.1.218`. `awsl doctor` and run preparation fail closed for other versions;
-those exact versions are part of this profile rather than a promise about later
-provider releases. The real-provider Codex evidence below remains specific to
-`0.145.0`; `0.146.0` support is covered by version-locked static and fixture
-tests, not a claimed real-provider acceptance run.
+awsl accepts strictly branded semantic versions from Codex CLI and Claude Code
+without a patch-version allowlist. `awsl doctor` marks versions with the
+evidence below as `verified` and other versions as `unverified`. This is not a
+claim that an unverified provider protocol is unchanged: adapter validation and
+runtime parsing still fail closed when required flags or events are absent. The
+real-provider Codex evidence below remains specific to `0.145.0`; `0.146.0`
+support is covered by static and fixture tests, not a claimed real-provider
+acceptance run.
 
 | Behavior | Status | Evidence | Evidence pointer | Boundary |
 |---|---|---|---|---|

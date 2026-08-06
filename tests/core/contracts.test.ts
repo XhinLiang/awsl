@@ -1,9 +1,14 @@
 import { describe, expect, test } from "vitest";
 
-import { AwslError, COMPAT_PROFILE, createEvent } from "../../src/index.js";
+import {
+  AwslError,
+  COMPAT_PROFILE,
+  WORKFLOW_ABI,
+  createEvent,
+} from "../../src/index.js";
 
 describe("public contracts", () => {
-  test("exports a versioned compatibility profile", () => {
+  test("adds the stable Workflow ABI without changing the legacy public profile", () => {
     expect(COMPAT_PROFILE).toMatchObject({
       id: "claude-code@2.1.218",
       agentCap: 1000,
@@ -13,6 +18,11 @@ describe("public contracts", () => {
         stderrTailBytes: 64 * 1024,
         killGraceMs: 1_000,
       },
+    });
+    expect(WORKFLOW_ABI).toMatchObject({
+      id: "awsl-workflow@1",
+      agentCap: COMPAT_PROFILE.agentCap,
+      structuredOutputAttempts: COMPAT_PROFILE.structuredOutputAttempts,
     });
   });
 

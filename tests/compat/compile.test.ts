@@ -34,6 +34,7 @@ describe("compileWorkflow", () => {
 
     expect(compiled).toMatchObject({
       filename: "/tmp/basic.js",
+      workflowAbi: "awsl-workflow@1",
       meta: { name: "basic", description: "basic workflow" },
       sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
@@ -69,6 +70,7 @@ describe("compileWorkflow", () => {
       description: "y",
       phases: [{ title: "A" }, { title: "B", detail: "ok", model: "shown" }],
     });
+    expect(compiled.workflowAbi).toBe("awsl-workflow@1");
   });
 
   test("accepts finite numeric literal object keys as string keys", () => {

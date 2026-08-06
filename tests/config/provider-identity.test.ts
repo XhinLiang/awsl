@@ -13,10 +13,10 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   type ProviderVersionProbe,
+  providerVersionSupport,
   resolveProviderIdentity,
   validateNormalizedProviderVersion,
 } from "../../src/config/provider-identity.js";
-import { AwslError } from "../../src/core/errors.js";
 
 const paths: string[] = [];
 
@@ -558,7 +558,7 @@ describe("provider identity resolution", () => {
     }
   });
 
-  test("normalizes only the exact supported trimmed banners and rejects controls, BOM, and foreign versions", async () => {
+  test("normalizes branded semantic versions without coupling runtime support to a patch release", async () => {
     const cwd = await directory();
     const codex = await executable(cwd, "codex");
     const claude = await executable(cwd, "claude");
@@ -586,9 +586,19 @@ describe("provider identity resolution", () => {
         executable: claude,
         cwd,
         env: {},
-        probe: probe("2.1.218 (Claude Code)"),
+        probe: probe("2.1.221 (Claude Code)"),
       }),
-    ).resolves.toMatchObject({ version: "2.1.218" });
+    ).resolves.toMatchObject({ version: "2.1.221" });
+
+    await expect(
+      resolveProviderIdentity({
+        provider: "codex",
+        executable: codex,
+        cwd,
+        env: {},
+        probe: probe("codex-cli 9.9.9"),
+      }),
+    ).resolves.toMatchObject({ version: "9.9.9" });
 
     await expect(
       resolveProviderIdentity({
@@ -601,9 +611,9 @@ describe("provider identity resolution", () => {
     ).rejects.toMatchObject({ code: "CONFIG_ERROR", recoverable: false });
     for (const stdout of [
       "\uFEFFcodex-cli 0.145.0",
-      "codex-cli 0.144.0",
-      "codex-cli 0.147.0",
-      "codex-cli 9.9.9",
+      "codex-cli 01.2.3",
+      "codex-cli 1.2",
+      "1.2.3 (Claude Code)",
     ]) {
       await expect(
         resolveProviderIdentity({
@@ -618,20 +628,12 @@ describe("provider identity resolution", () => {
         recoverable: false,
       });
     }
-    expect(validateNormalizedProviderVersion("codex", "0.145.0")).toBe(
-      "0.145.0",
-    );
-    expect(validateNormalizedProviderVersion("codex", "0.146.0")).toBe(
-      "0.146.0",
-    );
-    for (const version of ["0.144.0", "0.147.0", "9.9.9"]) {
-      expect(() =>
-        validateNormalizedProviderVersion("codex", version),
-      ).toThrowError(AwslError);
-    }
-    expect(() =>
-      validateNormalizedProviderVersion("claude", "9.9.9"),
-    ).toThrowError(AwslError);
+    for (const version of ["0.144.0", "0.147.0", "9.9.9"])
+      expect(validateNormalizedProviderVersion("codex", version)).toBe(version);
+    expect(validateNormalizedProviderVersion("claude", "9.9.9")).toBe("9.9.9");
+    expect(providerVersionSupport("codex", "0.146.0")).toBe("verified");
+    expect(providerVersionSupport("claude", "2.1.218")).toBe("verified");
+    expect(providerVersionSupport("claude", "2.1.221")).toBe("unverified");
   });
 
   test("applies the first-version-line byte and control rules before banner matching", async () => {
