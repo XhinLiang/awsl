@@ -1,6 +1,6 @@
 {
   "name": "@xhinliang/awsl",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Durable JavaScript workflows for coding agents — Codex or Claude, with parallelism, resume, budgets, and Git worktrees",
   "keywords": [
     "agentic-workflows",
