@@ -102,7 +102,7 @@ test("generates a deterministic production-only CycloneDX SBOM", async () => {
       "ajv@8.20.0",
       "commander@13.1.0",
       "fast-deep-equal@3.1.3",
-      "fast-uri@3.1.4",
+      "fast-uri@3.1.5",
       "json-schema-traverse@1.0.0",
       "require-from-string@2.0.2",
       "smol-toml@1.7.1",

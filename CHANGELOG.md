@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.2.0 - 2026-08-06
 
 ### Added
 
@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 
 - Make `awsl help`, nested help paths, and an empty invocation exit successfully,
   while rejecting unknown nested commands instead of showing misleading help.
+- Update the transitive `fast-uri` dependency to the patched `3.1.5` release.
 
 ## 0.1.1 - 2026-07-30
 
