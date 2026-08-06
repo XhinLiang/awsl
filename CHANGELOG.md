@@ -6,13 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Stable `awsl-workflow@1` ABI reporting and agent-oriented CLI help with
+  examples, input rules, output semantics, and nested command discovery.
 - Runnable research, code-review, worktree, and durable-resume example
   workflows with offline contract tests.
 - Public positioning, migration, contribution, and community guidance.
 
 ### Changed
 
+- Accept strictly branded provider semantic versions without a patch-version
+  allowlist, report unverified versions, and base doctor readiness on the
+  selected provider while preserving exact-version resume pins.
 - Improve npm discovery metadata and the repository onboarding experience.
+
+### Fixed
+
+- Make `awsl help`, nested help paths, and an empty invocation exit successfully,
+  while rejecting unknown nested commands instead of showing misleading help.
 
 ## 0.1.1 - 2026-07-30
 

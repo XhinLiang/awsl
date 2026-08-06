@@ -26,9 +26,10 @@ npm install --global @xhinliang/awsl
 awsl doctor
 ```
 
-`doctor` reports every provider independently. A `degraded` result is expected
-when an unused provider is not installed; the provider you select must pass its
-checks.
+`doctor` reports every provider independently and bases overall readiness on
+the selected provider. An unavailable unused provider does not degrade the
+selected path. Versions with committed protocol evidence are `verified`; other
+strictly branded semantic versions are `unverified` and may still run.
 
 Create `review.js`:
 
@@ -113,14 +114,14 @@ domain layer.
 
 - Node.js 22 or newer
 - Git for `isolation: "worktree"`
-- At least one supported provider executable:
-  - Codex CLI `0.145.0` or `0.146.0`
-  - Claude Code `2.1.218`
+- At least one Codex CLI or Claude Code executable with a standard semantic
+  version banner
 
-Provider versions are exact compatibility inputs. `awsl doctor` and run
-preparation reject other versions. This release targets the observable workflow
-behavior of `claude-code@2.1.218`; it does not claim byte-for-byte, universal,
-or future Claude Code equivalence.
+awsl owns and versions the JavaScript Workflow ABI independently from provider
+executables. This release normalizes structurally compatible workflow files to
+`awsl-workflow@1`. Codex CLI `0.145.0` and `0.146.0`, and Claude Code `2.1.218`,
+have committed protocol evidence; newer versions are accepted as `unverified`
+rather than rejected by a patch-version allowlist.
 
 See the
 [compatibility report](docs/compatibility/claude-code-2.1.218.md) for the
@@ -147,6 +148,7 @@ awsl runs pause <run-id>
 awsl doctor
 awsl config show
 awsl workflow inspect <workflow>
+awsl help <command>
 ```
 
 `run` accepts:
@@ -165,7 +167,7 @@ Input JSON is strict, rejects duplicate keys, and is limited to 512 KiB.
 
 `resume` accepts replacement `--args`, `--args-file`, `--budget`, and
 `--format`. The workflow source identity, provider, executable, provider
-profile, working directory, compatibility profile, and model policy remain
+profile, working directory, Workflow ABI, and model policy remain
 pinned. Drift is rejected before another provider call starts.
 
 Output contracts:
@@ -177,12 +179,16 @@ Output contracts:
 - `SIGINT` exits 130 and `SIGTERM` exits 143 after a durable terminal record.
 
 `doctor` probes Node, Git, Codex, and Claude versions without invoking a model.
+Its overall status follows the configured provider, while every provider keeps
+an independent availability and evidence status.
 
 ## Workflow contract
 
 The first statement must be a pure literal `export const meta = ...`.
 `meta.name` and `meta.description` are required non-empty strings. Workflow
 source is limited to 512 KiB and may use top-level `await` and `return`.
+`awsl workflow inspect <file>` reports the normalized Workflow ABI. The ABI is
+versioned by awsl rather than by the installed Claude or Codex executable.
 
 The workflow global API is:
 
@@ -212,7 +218,7 @@ Supported `agent` options are:
 ```
 
 Non-cancellation failures inside `parallel` and `pipeline` become `null` and
-emit a log, matching the reviewed compatibility profile. A `null` pipeline
+emit a log, matching the stable Workflow ABI. A `null` pipeline
 value skips the remaining stages for that item. Child workflows inherit the
 root provider and shared limits; a child cannot recursively start another child.
 
