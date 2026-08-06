@@ -12,7 +12,10 @@ import {
 } from "../compat/agent-registry.js";
 import { loadConfig } from "../config/load.js";
 import { canonicalCwd, resolveProjectRoot } from "../config/paths.js";
-import { resolveProviderIdentity } from "../config/provider-identity.js";
+import {
+  providerVersionSupport,
+  resolveProviderIdentity,
+} from "../config/provider-identity.js";
 import {
   type ProviderPinV2,
   type RunSourceIdentityV1,
@@ -91,6 +94,12 @@ const knownCommands = new Set([
   "workflow",
   "help",
 ]);
+const nestedCommands: Readonly<Record<string, ReadonlySet<string>>> =
+  Object.freeze({
+    runs: new Set(["list", "show", "pause"]),
+    config: new Set(["show"]),
+    workflow: new Set(["inspect"]),
+  });
 const diagnosticText: Record<AwslErrorCode, string> = {
   USAGE_ERROR: "invalid command line",
   CONFIG_ERROR: "configuration validation failed",
@@ -253,6 +262,34 @@ function rewriteLeadingWorkflow(argv: readonly string[]): string[] {
   const first = argv[0] as string;
   if (first.startsWith("-") || knownCommands.has(first)) return [...argv];
   return ["run", ...argv];
+}
+
+function rewriteHelpPath(argv: readonly string[]): string[] {
+  if (argv[0] !== "help" || argv.length === 1) return [...argv];
+  const command = argv[1] as string;
+  if (!knownCommands.has(command) || command === "help") usage();
+  const children = nestedCommands[command];
+  if (children === undefined) {
+    if (argv.length !== 2) usage();
+    return [command, "--help"];
+  }
+  if (argv.length === 2) return [command, "--help"];
+  const child = argv[2] as string;
+  if (argv.length !== 3 || !children.has(child)) usage();
+  return [command, child, "--help"];
+}
+
+function rejectUnknownNestedCommand(argv: readonly string[]): void {
+  const children = nestedCommands[argv[0] as string];
+  const child = argv[1];
+  if (
+    children !== undefined &&
+    child !== undefined &&
+    !child.startsWith("-") &&
+    child !== "help" &&
+    !children.has(child)
+  )
+    usage();
 }
 
 function rejectDuplicateLongOptions(argv: readonly string[]): void {
@@ -836,6 +873,7 @@ async function workflowInspectCommand(
       reference: root.reference,
       realpath: root.realpath,
       sha256: root.sha256,
+      workflowAbi: root.workflowAbi,
       meta: root.meta,
     },
     rawOptions.format,
@@ -875,7 +913,11 @@ async function doctorCommand(
         cwd,
         env: context.env,
       });
-      return { available: true, version: identity.version };
+      return {
+        available: true,
+        version: identity.version,
+        support: providerVersionSupport(id, identity.version),
+      };
     } catch (error) {
       return {
         available: false,
@@ -909,12 +951,16 @@ async function doctorCommand(
     version: process.versions.node,
   };
   const checks = { node, git, codex, claude };
+  const selectedProvider = loaded.value.provider;
+  const selected = checks[selectedProvider];
   await writeValue(
     context,
     {
-      status: Object.values(checks).every((check) => check.available)
-        ? "ok"
-        : "degraded",
+      status:
+        node.available && git.available && selected.available
+          ? "ok"
+          : "degraded",
+      selectedProvider,
       checks,
     },
     rawOptions.format,
@@ -938,7 +984,7 @@ function buildProgram(
   const program = new Command();
   program
     .name("awsl")
-    .description("Run Claude Code-compatible JavaScript workflows")
+    .description("Run durable JavaScript workflows with Codex or Claude")
     .version(packageVersion)
     .exitOverride()
     .configureOutput({
@@ -947,9 +993,25 @@ function buildProgram(
       },
       writeErr: () => {},
       outputError: () => {},
-    });
+    })
+    .addHelpText(
+      "after",
+      `
+Start here:
+  awsl doctor
+  awsl workflow inspect <workflow>
+  awsl run <workflow> --provider codex --args '{"key":"value"}'
 
-  addFormat(
+Workflow contract:
+  Start with a pure literal "export const meta = { name, description }".
+  Available globals include args, agent, parallel, pipeline, phase, log,
+  workflow, budget, setTimeout, and clearTimeout.
+
+Use "awsl help <command>" or "awsl help <group> <command>" for details.
+Workflow files are trusted code. A run uses one provider and never falls back.`,
+    );
+
+  const run = addFormat(
     program
       .command("run")
       .description("run a workflow")
@@ -959,11 +1021,26 @@ function buildProgram(
       .option("--args-file <path>", "workflow arguments file or -")
       .option("--cwd <path>", "session working directory")
       .option("--budget <tokens>", "output token budget"),
-  ).action(async (workflow: string, options: RunCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Arguments:
+  --args, --args-file, and non-empty piped stdin are mutually exclusive.
+  JSON is strict, rejects duplicate keys, and is limited to 512 KiB.
+
+Output:
+  auto uses pretty on a TTY and jsonl otherwise. json emits one terminal envelope.
+  A run uses one provider for the complete workflow tree and never falls back.
+
+Examples:
+  awsl run review.js --provider codex --args '{"request":"review auth"}'
+  awsl review.js --args-file input.json --format json`,
+  );
+  run.action(async (workflow: string, options: RunCommandOptions) => {
     setExitCode(await runCommand(workflow, options, context));
   });
 
-  addFormat(
+  const resume = addFormat(
     program
       .command("resume")
       .description("resume a durable run")
@@ -971,52 +1048,124 @@ function buildProgram(
       .option("--args <json>", "replacement workflow arguments")
       .option("--args-file <path>", "replacement arguments file or -")
       .option("--budget <tokens>", "replacement output token budget"),
-  ).action(async (runId: string, options: ResumeCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Resume reuses the longest valid journal prefix. Provider, executable version,
+working directory, workflow sources, and model policy remain pinned.
+
+Example:
+  awsl resume <run-id> --args-file input.json --format json`,
+  );
+  resume.action(async (runId: string, options: ResumeCommandOptions) => {
     setExitCode(await resumeCommand(runId, options, context));
   });
 
-  const runs = program.command("runs").description("inspect durable runs");
-  addFormat(runs.command("list").description("list runs")).action(
-    async (options: FormatCommandOptions) => {
-      setExitCode(await runsListCommand(options, context));
-    },
+  const runs = program
+    .command("runs")
+    .description("inspect durable runs")
+    .addHelpText(
+      "after",
+      `
+Run IDs are scoped to the current project and configured state directory.
+Use "awsl help runs <command>" for command-specific help.`,
+    );
+  const runsList = addFormat(
+    runs.command("list").description("list runs"),
+  ).addHelpText(
+    "after",
+    `
+Lists durable runs for the current project, including status, active ownership,
+attempt number, and whether interrupted work may execute at least once.`,
   );
-  addFormat(
+  runsList.action(async (options: FormatCommandOptions) => {
+    setExitCode(await runsListCommand(options, context));
+  });
+  const runsShow = addFormat(
     runs.command("show").description("show one run").argument("<run-id>"),
-  ).action(async (runId: string, options: FormatCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Shows the durable run snapshot, terminal result when present, active ownership,
+and at-least-once warning state for the current project.`,
+  );
+  runsShow.action(async (runId: string, options: FormatCommandOptions) => {
     setExitCode(await runsShowCommand(runId, options, context));
   });
-  addFormat(
+  const runsPause = addFormat(
     runs
       .command("pause")
       .description("cooperatively pause one active run")
       .argument("<run-id>"),
-  ).action(async (runId: string, options: FormatCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Verifies the recorded process identity, requests a cooperative pause, and waits
+for durable confirmation. Continue later with "awsl resume <run-id>".`,
+  );
+  runsPause.action(async (runId: string, options: FormatCommandOptions) => {
     setExitCode(await runsPauseCommand(runId, options, context));
   });
 
-  addFormat(
+  const doctor = addFormat(
     program.command("doctor").description("check local capabilities"),
-  ).action(async (options: FormatCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Doctor checks Node, Git, Codex, and Claude without invoking a model. Overall
+status follows the selected provider; an unavailable unused provider does not
+block a run. New provider versions are reported as unverified, not rejected.`,
+  );
+  doctor.action(async (options: FormatCommandOptions) => {
     setExitCode(await doctorCommand(options, context));
   });
 
-  const config = program.command("config").description("inspect configuration");
-  addFormat(
+  const config = program
+    .command("config")
+    .description("inspect configuration")
+    .addHelpText(
+      "after",
+      `
+Configuration precedence is CLI, AWSL_ environment, project config, user
+config, then defaults. "config show" includes field provenance.`,
+    );
+  const configShow = addFormat(
     config.command("show").description("show merged configuration"),
-  ).action(async (options: FormatCommandOptions) => {
+  ).addHelpText(
+    "after",
+    `
+Reports resolved configuration, per-field provenance, and hashed config source
+identities with defensive secret redaction.`,
+  );
+  configShow.action(async (options: FormatCommandOptions) => {
     setExitCode(await configShowCommand(options, context));
   });
 
-  const workflow = program.command("workflow").description("inspect workflows");
-  addFormat(
+  const workflow = program
+    .command("workflow")
+    .description("inspect workflows")
+    .addHelpText(
+      "after",
+      `
+Inspection validates trusted JavaScript without probing a provider or invoking
+a model. It reports the normalized awsl Workflow ABI and metadata.`,
+    );
+  const workflowInspect = addFormat(
     workflow
       .command("inspect")
       .description("validate and inspect a workflow")
       .argument("<file>"),
-  ).action(async (file: string, options: FormatCommandOptions) => {
-    setExitCode(await workflowInspectCommand(file, options, context));
-  });
+  ).addHelpText(
+    "after",
+    `
+Parses and validates the file locally, then reports its canonical path, source
+hash, metadata, and normalized Workflow ABI. No provider or model is invoked.`,
+  );
+  workflowInspect.action(
+    async (file: string, options: FormatCommandOptions) => {
+      setExitCode(await workflowInspectCommand(file, options, context));
+    },
+  );
   return program;
 }
 
@@ -1028,7 +1177,9 @@ export async function executeCli(
   let exitCode = 0;
   const helpWrites: Promise<void>[] = [];
   try {
-    const rewritten = rewriteLeadingWorkflow(argv);
+    const requested = argv.length === 0 ? ["help"] : argv;
+    const rewritten = rewriteLeadingWorkflow(rewriteHelpPath(requested));
+    rejectUnknownNestedCommand(rewritten);
     rejectDuplicateLongOptions(rewritten);
     if (
       rewritten[0] === "resume" &&
@@ -1050,7 +1201,8 @@ export async function executeCli(
     await Promise.allSettled(helpWrites);
     if (
       error instanceof CommanderError &&
-      (error.code === "commander.helpDisplayed" ||
+      (error.code === "commander.help" ||
+        error.code === "commander.helpDisplayed" ||
         error.code === "commander.version")
     )
       return 0;

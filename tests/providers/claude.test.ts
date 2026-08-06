@@ -420,10 +420,14 @@ describe("Claude adapter request contract", () => {
     expect(
       () => new ClaudeAdapter({ identity: { ...identity, id: "codex" } }),
     ).toThrow(/requires a claude provider identity/);
+    expect(
+      new ClaudeAdapter({ identity: { ...identity, version: "2.1.221" } })
+        .identity.version,
+    ).toBe("2.1.221");
   });
 
-  test("rejects a raw or foreign provider version before launch", () => {
-    for (const version of ["2.1.218 (Claude Code)", "9.9.9"]) {
+  test("rejects a raw or malformed provider version before launch", () => {
+    for (const version of ["2.1.218 (Claude Code)", "9.9"]) {
       let launchCalls = 0;
       expect(() => {
         const provider = new ClaudeAdapter({

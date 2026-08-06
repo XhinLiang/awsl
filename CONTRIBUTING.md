@@ -30,7 +30,7 @@ pnpm run build
 ## Pull requests
 
 Keep changes focused and explain their effect on the public CLI, JavaScript
-workflow API, events, compatibility profile, and durable state. Add tests for
+workflow API, events, Workflow ABI, provider protocol, and durable state. Add tests for
 behavior changes and state any real-provider evidence that is still missing.
 Behavior changes should start with a failing regression test.
 

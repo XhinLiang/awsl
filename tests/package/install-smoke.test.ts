@@ -339,11 +339,11 @@ test("packed CLI installs and runs from a clean directory", async () => {
       [
         "--input-type=module",
         "--eval",
-        'import("@xhinliang/awsl").then((value) => process.stdout.write(value.COMPAT_PROFILE.id))',
+        'import("@xhinliang/awsl").then((value) => process.stdout.write(value.WORKFLOW_ABI.id))',
       ],
       { cwd: project, timeout: 20_000 },
     );
-    expect(library.stdout).toBe("claude-code@2.1.218");
+    expect(library.stdout).toBe("awsl-workflow@1");
   } finally {
     await rm(root, { force: true, recursive: true });
   }

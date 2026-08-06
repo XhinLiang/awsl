@@ -254,7 +254,6 @@ describe("ProviderPinV1 parser", () => {
     ["noncanonical executable", pin({ executableRealpath: "/opt/../codex" })],
     ["UNC executable", pin({ executableRealpath: "//host/codex" })],
     ["raw executable version", pin({ executableVersion: "codex-cli 0.145.0" })],
-    ["foreign executable version", pin({ executableVersion: "2.1.218" })],
     ["relative cwd", pin({ canonicalCwd: "workspace" })],
     ["noncanonical cwd", pin({ canonicalCwd: "/workspace/." })],
     ["bad profile", pin({ providerProfile: "../profile" })],
@@ -771,6 +770,11 @@ describe("ProviderPinV1 resume verification", () => {
       }),
     );
   });
+
+  test("maps the legacy Claude oracle profile to the stable awsl Workflow ABI", () => {
+    const current = pinV2({ compatibilityProfile: "awsl-workflow@1" });
+    expect(verifyAndHydrateResumePin(pinV2(), current)).toEqual(current);
+  });
 });
 
 describe("ProviderPinV1 static assembly", () => {
@@ -781,7 +785,7 @@ describe("ProviderPinV1 static assembly", () => {
     expect(built).toMatchObject({
       version: 2,
       provider: "codex",
-      compatibilityProfile: "claude-code@2.1.218",
+      compatibilityProfile: "awsl-workflow@1",
       executableRealpath: "/opt/awsl/codex",
       executableVersion: "0.145.0",
       explicitDefaultModel: "gpt-5.6-terra",

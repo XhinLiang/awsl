@@ -229,7 +229,7 @@ describe("native routing fingerprint input and ABI", () => {
     await expect(
       nativeRoutingFingerprint({
         ...value.input,
-        providerVersion: "0.147.0",
+        providerVersion: "0.147",
       }),
     ).rejects.toMatchObject({ code: "COMPATIBILITY_ERROR" });
     await expect(

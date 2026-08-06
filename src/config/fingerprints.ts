@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 
 import { WORKFLOW_SUBAGENT_SOURCE } from "../compat/builtins/workflow-subagent.js";
-import { COMPATIBILITY_PROFILE } from "../compat/profile.js";
+import { LEGACY_COMPATIBILITY_PROFILE } from "../compat/profile.js";
 import {
   canonicalJson,
   isUnicodeScalarString,
@@ -329,7 +329,9 @@ export function awslBehaviorFingerprint(
     config,
     enabledPluginRoots: roots,
     registryRules: REGISTRY_FINGERPRINT_RULES,
-    compatibilityProfile: COMPATIBILITY_PROFILE,
+    // Fingerprint V1 shipped with this field and value. Preserve its exact
+    // encoding so a workflow-ABI rename does not strand durable 0.1.x runs.
+    compatibilityProfile: LEGACY_COMPATIBILITY_PROFILE,
     builtinAssets: {
       "workflow-subagent": builtinHash,
     },

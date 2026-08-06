@@ -147,4 +147,26 @@ describe("CLI configuration and doctor commands", () => {
       },
     });
   });
+
+  test("doctor readiness follows the selected provider, not unused providers", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "awsl-cli-doctor-"));
+    const cli = memoryCli(cwd, {
+      ...process.env,
+      AWSL_PROVIDER: "codex",
+      AWSL_CODEX_COMMAND: fakeCodex,
+      AWSL_FAKE_CODEX_VERSION: "0.146.1",
+      AWSL_CLAUDE_COMMAND: join(cwd, "missing-claude"),
+    });
+    expect(await executeCli(["doctor", "--format", "json"], cli.context)).toBe(
+      0,
+    );
+    expect(JSON.parse(cli.output().stdout)).toMatchObject({
+      status: "ok",
+      selectedProvider: "codex",
+      checks: {
+        codex: { available: true, version: "0.146.1", support: "unverified" },
+        claude: { available: false },
+      },
+    });
+  });
 });
