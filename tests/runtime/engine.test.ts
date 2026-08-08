@@ -458,6 +458,120 @@ describe("runtime engine", () => {
     });
   });
 
+  test("retries safe transient provider failures inside one logical call", async () => {
+    const provider = new RecordingProvider((_request, index) =>
+      index < 2
+        ? {
+            kind: "error",
+            error: new AwslError("PROVIDER_ERROR", "temporary upstream 502", {
+              provider: "codex",
+              recoverable: true,
+            }),
+            usage: { outputTokens: 0, complete: true },
+          }
+        : {
+            kind: "completed",
+            result: { text: "recovered" },
+            usage: { inputTokens: 2, outputTokens: 1, complete: true },
+          },
+    );
+    const store = new RecordingStore();
+    const options = await harness("basic-agent.js", provider, store);
+
+    const run = await runWorkflow({
+      ...options,
+      runId: "provider-retry-success",
+      attemptId: "attempt-0",
+      attemptSeq: 0,
+      args: { prompt: "hello" },
+      lockOwner,
+    });
+
+    expect(run.result).toMatchObject({ answer: "recovered" });
+    expect(provider.calls).toHaveLength(3);
+    expect(
+      store.events.filter((event) => event.type === "call.retrying"),
+    ).toHaveLength(2);
+    expect(
+      store.records.filter(
+        (record) => record.kind === "call" && record.state === "failed",
+      ),
+    ).toHaveLength(0);
+  });
+
+  test("does not retry nonrecoverable or nonzero provider failures", async () => {
+    const failures = [
+      new RecordingProvider(() => ({
+        kind: "error",
+        error: new AwslError("PROVIDER_ERROR", "authentication failed", {
+          provider: "codex",
+          recoverable: false,
+        }),
+        usage: { outputTokens: 0, complete: true },
+      })),
+      new RecordingProvider(() => ({
+        kind: "error",
+        error: new AwslError("PROVIDER_ERROR", "failed after output", {
+          provider: "codex",
+          recoverable: true,
+        }),
+        usage: { outputTokens: 1, complete: true },
+      })),
+    ];
+
+    for (const [index, provider] of failures.entries()) {
+      const options = await harness("basic-agent.js", provider);
+      await expect(
+        runWorkflow({
+          ...options,
+          runId: `provider-no-retry-${index}`,
+          attemptId: "attempt-0",
+          attemptSeq: 0,
+          args: { prompt: "hello" },
+          lockOwner,
+        }),
+      ).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
+      expect(provider.calls).toHaveLength(1);
+    }
+  });
+
+  test("writes one terminal failure after safe retries are exhausted", async () => {
+    const provider = new RecordingProvider(() => ({
+      kind: "error",
+      error: new AwslError("PROVIDER_ERROR", "temporary upstream 503", {
+        provider: "codex",
+        recoverable: true,
+      }),
+      usage: { outputTokens: 0, complete: true },
+    }));
+    const store = new RecordingStore();
+    const options = await harness("basic-agent.js", provider, store);
+
+    await expect(
+      runWorkflow({
+        ...options,
+        runId: "provider-retry-exhausted",
+        attemptId: "attempt-0",
+        attemptSeq: 0,
+        args: { prompt: "hello" },
+        lockOwner,
+      }),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_ERROR",
+      message: "temporary upstream 503",
+    });
+
+    expect(provider.calls).toHaveLength(3);
+    expect(
+      store.events.filter((event) => event.type === "call.retrying"),
+    ).toHaveLength(2);
+    expect(
+      store.records.filter(
+        (record) => record.kind === "call" && record.state === "failed",
+      ),
+    ).toHaveLength(1);
+  });
+
   test("validates structured results again before completing the call", async () => {
     const provider = new RecordingProvider(() => ({
       kind: "completed",

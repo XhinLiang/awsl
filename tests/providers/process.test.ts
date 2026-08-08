@@ -212,6 +212,7 @@ describe("runProviderProcess", () => {
 
     expect(result.stderrTail).toEqual(Buffer.from("QRSTUVWXYZ"));
 
+    let failureStderr: Buffer = Buffer.alloc(0);
     const failure = await runProviderProcess({
       executable: fixturePath,
       argv: [],
@@ -220,6 +221,9 @@ describe("runProviderProcess", () => {
       signal: new AbortController().signal,
       env: fixtureEnvironment("nonzero"),
       stderrLimitBytes: 10,
+      onFailureStderr: (value) => {
+        failureStderr = value;
+      },
     }).catch((error: unknown) => error);
 
     expect(failure).toMatchObject({
@@ -228,6 +232,7 @@ describe("runProviderProcess", () => {
     });
     expect(String(failure)).not.toContain("RAW_STDERR_SUPER_SECRET");
     expect(JSON.stringify(failure)).not.toContain("RAW_STDERR_SUPER_SECRET");
+    expect(failureStderr).toEqual(Buffer.from("PER_SECRET"));
   });
 
   test("awaits event callbacks sequentially and preserves order", async () => {

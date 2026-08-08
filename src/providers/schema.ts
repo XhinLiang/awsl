@@ -244,9 +244,23 @@ function includesObjectType(type: unknown): boolean {
   );
 }
 
-function closeCodexRequiredFields(schema: unknown): boolean {
+function inferConstType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number" && Number.isInteger(value)) return "integer";
+  return typeof value;
+}
+
+function projectCodexSchema(schema: unknown): boolean {
   if (!isSchemaRecord(schema)) return false;
   let changed = false;
+  if (Object.hasOwn(schema, "const")) {
+    const constant = schema.const;
+    Reflect.deleteProperty(schema, "const");
+    schema.enum = [constant];
+    if (schema.type === undefined) schema.type = inferConstType(constant);
+    changed = true;
+  }
   if (
     includesObjectType(schema.type) &&
     schema.additionalProperties !== false
@@ -267,35 +281,34 @@ function closeCodexRequiredFields(schema: unknown): boolean {
     const map = schema[keyword];
     if (!isSchemaRecord(map)) continue;
     for (const nested of Object.values(map)) {
-      if (closeCodexRequiredFields(nested)) changed = true;
+      if (projectCodexSchema(nested)) changed = true;
     }
   }
   for (const keyword of CODEX_SCHEMA_ARRAYS) {
     const alternatives = schema[keyword];
     if (!Array.isArray(alternatives)) continue;
     for (const nested of alternatives) {
-      if (closeCodexRequiredFields(nested)) changed = true;
+      if (projectCodexSchema(nested)) changed = true;
     }
   }
 
   const items = schema.items;
   if (Array.isArray(items)) {
     for (const nested of items) {
-      if (closeCodexRequiredFields(nested)) changed = true;
+      if (projectCodexSchema(nested)) changed = true;
     }
-  } else if (closeCodexRequiredFields(items)) {
+  } else if (projectCodexSchema(items)) {
     changed = true;
   }
 
   const dependencies = schema.dependencies;
   if (isSchemaRecord(dependencies)) {
     for (const nested of Object.values(dependencies)) {
-      if (!Array.isArray(nested) && closeCodexRequiredFields(nested))
-        changed = true;
+      if (!Array.isArray(nested) && projectCodexSchema(nested)) changed = true;
     }
   }
   for (const keyword of CODEX_SCHEMA_VALUES) {
-    if (closeCodexRequiredFields(schema[keyword])) changed = true;
+    if (projectCodexSchema(schema[keyword])) changed = true;
   }
   return changed;
 }
@@ -307,7 +320,7 @@ export function prepareCodexJsonSchema(
   const providerOptions = { ...options, provider: "codex" as const };
   const prepared = prepareProviderJsonSchema(value, providerOptions);
   const schema = JSON.parse(prepared.packet) as object;
-  if (!closeCodexRequiredFields(schema)) return prepared;
+  if (!projectCodexSchema(schema)) return prepared;
   return {
     packet: serializeProviderJson(schema, providerOptions),
     matches: prepared.matches,

@@ -42,6 +42,7 @@ import {
   runProviderProcess,
 } from "../providers/process.js";
 import { runWorkflow } from "../runtime/engine.js";
+import { installSkills } from "../skills/install.js";
 import { redactJson } from "../store/redact.js";
 import { FileRunStore } from "../store/run-store.js";
 import type { LockOwner } from "../store/types.js";
@@ -968,6 +969,23 @@ async function doctorCommand(
   return 0;
 }
 
+async function installSkillsCommand(context: NormalizedContext): Promise<0> {
+  const result = await installSkills(context.homeDir);
+  const skill = result.skills[0];
+  if (skill === undefined)
+    throw new AwslError("PERSISTENCE_ERROR", "skill installation failed", {
+      recoverable: false,
+    });
+  const verb =
+    skill.status === "installed"
+      ? "Installed"
+      : skill.status === "updated"
+        ? "Updated"
+        : "Already up to date";
+  await context.writeStdout(`${verb}: ${skill.path}\n`);
+  return 0;
+}
+
 function addFormat(command: Command): Command {
   return command.option(
     "--format <format>",
@@ -986,6 +1004,10 @@ function buildProgram(
     .name("awsl")
     .description("Run durable JavaScript workflows with Codex or Claude")
     .version(packageVersion)
+    .option(
+      "--install-skills",
+      "install the awsl Codex skill in ~/.agents/skills",
+    )
     .exitOverride()
     .configureOutput({
       writeOut: (value) => {
@@ -1010,7 +1032,6 @@ Workflow contract:
 Use "awsl help <command>" or "awsl help <group> <command>" for details.
 Workflow files are trusted code. A run uses one provider and never falls back.`,
     );
-
   const run = addFormat(
     program
       .command("run")
@@ -1177,6 +1198,8 @@ export async function executeCli(
   let exitCode = 0;
   const helpWrites: Promise<void>[] = [];
   try {
+    if (argv.length === 1 && argv[0] === "--install-skills")
+      return await installSkillsCommand(context);
     const requested = argv.length === 0 ? ["help"] : argv;
     const rewritten = rewriteLeadingWorkflow(rewriteHelpPath(requested));
     rejectUnknownNestedCommand(rewritten);

@@ -6,7 +6,10 @@ import {
   type AwslErrorJSON,
 } from "../core/errors.js";
 import { strictJsonClone, strictJsonPacket } from "./json.js";
-import type { BudgetSnapshot } from "./protocol.js";
+import {
+  type BudgetSnapshot,
+  MAX_CONCURRENT_WORKER_CALLS,
+} from "./protocol.js";
 
 export class RunAbortError extends Error {
   readonly code = "CANCELLED" as const;
@@ -362,7 +365,30 @@ export async function executeSandbox(
       if (!packet.ok) throw makeError(packet.error);
       return packet.value;
     };
-    const call = async (method, params) => unwrap(JSON.parse(await bridge.request(method, JSON.stringify(params))));
+    const callWaiters = [];
+    let activeCalls = 0;
+    const acquireCall = () => {
+      if (activeCalls < ${MAX_CONCURRENT_WORKER_CALLS}) {
+        activeCalls += 1;
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => callWaiters.push(resolve)).then(() => {
+        activeCalls += 1;
+      });
+    };
+    const releaseCall = () => {
+      activeCalls -= 1;
+      const next = callWaiters.shift();
+      if (next) next();
+    };
+    const call = async (method, params) => {
+      await acquireCall();
+      try {
+        return unwrap(JSON.parse(await bridge.request(method, JSON.stringify(params))));
+      } finally {
+        releaseCall();
+      }
+    };
     const latestBudget = () => JSON.parse(bridge.budget());
     globalThis.args = bridge.args === null ? undefined : JSON.parse(bridge.args);
     let currentPhase;

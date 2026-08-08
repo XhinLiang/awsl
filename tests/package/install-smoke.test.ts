@@ -182,6 +182,8 @@ test("packed CLI installs and runs from a clean directory", async () => {
         "package/examples/research-panel.js",
         "package/examples/resume-after-failure.js",
         "package/examples/worktree-refactor.js",
+        "package/skills/awsl/SKILL.md",
+        "package/skills/awsl/agents/openai.yaml",
         "package/sbom.cdx.json",
         "package/dist/index.js",
         "package/dist/index.d.ts",
@@ -204,6 +206,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
             "package/docs/implementation/260729-real-codex-acceptance.md" ||
           entry === "package/docs/why-awsl.md" ||
           entry.startsWith("package/examples/") ||
+          entry.startsWith("package/skills/") ||
           entry === "package/sbom.cdx.json" ||
           entry.startsWith("package/dist/"),
       ),
@@ -262,6 +265,30 @@ test("packed CLI installs and runs from a clean directory", async () => {
     );
 
     const executable = join(project, "node_modules", ".bin", "awsl");
+    const installedHome = join(root, "home");
+    await mkdir(installedHome);
+    const skillInstallation = await runInstalled(
+      executable,
+      ["--install-skills"],
+      {
+        cwd: project,
+        env: {
+          HOME: installedHome,
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          TMPDIR: root,
+        },
+      },
+    );
+    expect(skillInstallation).toMatchObject({ code: 0, stderr: "" });
+    expect(skillInstallation.stdout).toContain(
+      join(installedHome, ".agents", "skills", "awsl"),
+    );
+    expect(
+      await readFile(
+        join(installedHome, ".agents", "skills", "awsl", "SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("name: awsl");
     const execution = await runInstalled(
       executable,
       [
@@ -274,7 +301,7 @@ test("packed CLI installs and runs from a clean directory", async () => {
       {
         cwd: project,
         env: {
-          HOME: join(root, "home"),
+          HOME: installedHome,
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           TMPDIR: root,
           AWSL_CODEX_COMMAND: fakeCodex,

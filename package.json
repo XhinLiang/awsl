@@ -55,6 +55,7 @@
     "docs/implementation/260729-real-codex-acceptance.md",
     "docs/why-awsl.md",
     "examples",
+    "skills",
     "sbom.cdx.json"
   ],
   "scripts": {

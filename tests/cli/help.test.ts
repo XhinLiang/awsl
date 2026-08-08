@@ -65,6 +65,13 @@ describe("CLI help", () => {
     );
   });
 
+  test("documents user-level Codex skill installation", async () => {
+    const cli = memoryCli();
+    expect(await executeCli(["--help"], cli.context)).toBe(0);
+    expect(cli.output().stdout).toContain("--install-skills");
+    expect(cli.output().stdout).toContain("~/.agents/skills");
+  });
+
   test("rejects unknown nested commands even when help is requested", async () => {
     const cli = memoryCli();
     expect(

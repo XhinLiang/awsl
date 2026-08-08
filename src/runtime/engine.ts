@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { isProxy } from "node:util/types";
 
 import { negotiateAgent } from "../compat/agent-negotiation.js";
@@ -88,6 +89,8 @@ const agentOptionKeys = new Set([
   "isolation",
   "agentType",
 ]);
+const PROVIDER_ATTEMPT_LIMIT = 3;
+const PROVIDER_RETRY_DELAYS_MS = [250, 1_000] as const;
 
 interface CapturedAgentOptions {
   readonly label?: string;
@@ -524,6 +527,24 @@ function captureProviderOutcome(
     usage,
     ...(observation === undefined ? {} : { observation }),
   };
+}
+
+function canRetryProviderOutcome(
+  outcome: ProviderOutcome,
+): outcome is Extract<ProviderOutcome, { kind: "error" }> {
+  if (
+    outcome.kind !== "error" ||
+    outcome.error.code !== "PROVIDER_ERROR" ||
+    outcome.error.recoverable !== true ||
+    outcome.usage.complete !== true ||
+    outcome.usage.outputTokens !== 0
+  )
+    return false;
+  return [
+    outcome.usage.inputTokens,
+    outcome.usage.cachedInputTokens,
+    outcome.usage.reasoningTokens,
+  ].every((value) => value === undefined || value === 0);
 }
 
 function captureProviderError(
@@ -1153,34 +1174,63 @@ async function executeAgent(
       });
       if (context.controller.signal.aborted)
         throw cancelled(context.options.runId);
-      try {
-        return captureProviderOutcome(
-          await context.options.provider.run({
-            prompt: promptValue,
-            cwd: isolated?.cwd ?? context.options.canonicalCwd,
-            ...(resolved.model === undefined && pinnedDefault === undefined
-              ? {}
-              : { model: resolved.model ?? pinnedDefault }),
-            ...(resolved.effort === undefined
-              ? {}
-              : { effort: resolved.effort }),
-            ...(providerSchema === undefined ? {} : { schema: providerSchema }),
-            agent: selection.policy,
+      for (let attempt = 1; attempt <= PROVIDER_ATTEMPT_LIMIT; attempt += 1) {
+        try {
+          const outcome = captureProviderOutcome(
+            await context.options.provider.run({
+              prompt: promptValue,
+              cwd: isolated?.cwd ?? context.options.canonicalCwd,
+              ...(resolved.model === undefined && pinnedDefault === undefined
+                ? {}
+                : { model: resolved.model ?? pinnedDefault }),
+              ...(resolved.effort === undefined
+                ? {}
+                : { effort: resolved.effort }),
+              ...(providerSchema === undefined
+                ? {}
+                : { schema: providerSchema }),
+              agent: selection.policy,
+              signal: context.controller.signal,
+              onRawEvent: context.options.store.rawEventSink(
+                context.options.provider.id,
+              ),
+            }),
+            context.options.provider,
+          );
+          if (
+            attempt === PROVIDER_ATTEMPT_LIMIT ||
+            !canRetryProviderOutcome(outcome)
+          )
+            return outcome;
+          const delayMs = PROVIDER_RETRY_DELAYS_MS[attempt - 1];
+          await emit(context, "call.retrying", {
+            callId: identity.callId,
+            callSeq,
+            provider: context.options.provider.id,
+            attempt,
+            nextAttempt: attempt + 1,
+            maxAttempts: PROVIDER_ATTEMPT_LIMIT,
+            delayMs,
+            code: outcome.error.code,
+          });
+          await delay(delayMs, undefined, {
             signal: context.controller.signal,
-            onRawEvent: context.options.store.rawEventSink(
-              context.options.provider.id,
-            ),
-          }),
-          context.options.provider,
-        );
-      } catch (error) {
-        if (error instanceof AwslError) throw error;
-        throw providerError(
-          context.options.provider,
-          "provider execution failed",
-          error,
-        );
+          });
+        } catch (error) {
+          if (error instanceof AwslError) throw error;
+          if (context.controller.signal.aborted)
+            throw cancelled(context.options.runId);
+          throw providerError(
+            context.options.provider,
+            "provider execution failed",
+            error,
+          );
+        }
       }
+      throw providerError(
+        context.options.provider,
+        "provider retry loop exhausted without an outcome",
+      );
     }, context.controller.signal);
 
     terminalUsage = outcome.usage;

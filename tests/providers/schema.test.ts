@@ -149,6 +149,63 @@ describe("provider JSON artifacts", () => {
     expect(JSON.stringify(workflowSchema)).toBe(originalPacket);
   });
 
+  test("lowers constants only in the recursive Codex schema packet", () => {
+    const workflowSchema = {
+      $defs: {
+        enabled: { const: true },
+      },
+      additionalProperties: false,
+      properties: {
+        source: { const: "coding-agent-memory" },
+        count: { const: 2 },
+        ratio: { const: 1.5 },
+        values: {
+          items: { const: null },
+          type: "array",
+        },
+      },
+      required: ["source", "count", "ratio", "values"],
+      type: "object",
+    };
+    const originalPacket = JSON.stringify(workflowSchema);
+
+    const codex = prepareCodexJsonSchema(workflowSchema, {
+      label: "Codex schema",
+    });
+    const packet = JSON.parse(codex.packet) as {
+      $defs: { enabled: unknown };
+      properties: Record<string, unknown>;
+    };
+
+    expect(packet.properties).toEqual({
+      source: { enum: ["coding-agent-memory"], type: "string" },
+      count: { enum: [2], type: "integer" },
+      ratio: { enum: [1.5], type: "number" },
+      values: {
+        items: { enum: [null], type: "null" },
+        type: "array",
+      },
+    });
+    expect(packet.$defs.enabled).toEqual({ enum: [true], type: "boolean" });
+    expect(
+      codex.matches({
+        source: "coding-agent-memory",
+        count: 2,
+        ratio: 1.5,
+        values: [null],
+      }),
+    ).toBe(true);
+    expect(
+      codex.matches({
+        source: "backend-docs",
+        count: 2,
+        ratio: 1.5,
+        values: [null],
+      }),
+    ).toBe(false);
+    expect(JSON.stringify(workflowSchema)).toBe(originalPacket);
+  });
+
   test.each([
     {
       name: "omitted",

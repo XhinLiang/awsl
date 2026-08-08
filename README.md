@@ -23,8 +23,12 @@ Install awsl and check the local provider setup:
 
 ```bash
 npm install --global @xhinliang/awsl
+awsl --install-skills
 awsl doctor
 ```
+
+`--install-skills` installs the awsl Codex Skill in
+`~/.agents/skills/awsl`. It is safe to run again after upgrading awsl.
 
 `doctor` reports every provider independently and bases overall readiness on
 the selected provider. An unavailable unused provider does not degrade the
@@ -148,6 +152,7 @@ awsl runs pause <run-id>
 awsl doctor
 awsl config show
 awsl workflow inspect <workflow>
+awsl --install-skills
 awsl help <command>
 ```
 
@@ -290,6 +295,15 @@ at-least-once behavior: if an external side effect completed but its successful
 journal record was not durably stored, a resume can repeat that call. Workflow
 authors must use idempotency keys or their own reconciliation for side effects.
 
+Each logical provider call also has a bounded transient-failure retry: at most
+three attempts with backoff. awsl retries only a provider error explicitly
+classified as recoverable with complete zero-token usage. The Codex adapter
+uses that classification only for transient transport or upstream failures
+before any substantive item, command, or file change is observed. Authentication,
+protocol, schema, and post-output failures are not retried automatically. A
+`call.retrying` event is emitted before each fresh attempt; after exhaustion the
+logical call fails normally and remains eligible for explicit durable resume.
+
 `awsl runs pause` verifies both PID and process-start identity before signalling
 the owner. Opening, listing, or resuming a run repairs only a verified stale
 terminal lock.
@@ -317,7 +331,7 @@ The stable envelope is:
 
 Runtime event types include `run.started`, `run.completed`, `run.failed`,
 `run.killed`, `run.paused`, `call.scheduled`, `call.started`,
-`call.completed`, `call.failed`, `call.reused`, `phase.changed`,
+`call.retrying`, `call.completed`, `call.failed`, `call.reused`, `phase.changed`,
 `workflow.log`, `worktree.created`, and `worktree.retained`. Non-run CLI
 commands can emit `command.completed`.
 

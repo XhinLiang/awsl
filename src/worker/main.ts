@@ -60,11 +60,10 @@ function send(message: ChildMessage) {
   if (!process.connected || !process.send)
     failClosed("worker IPC channel is unavailable");
   try {
-    const accepted = process.send(message, (error) => {
+    process.send(message, (error) => {
       if (error)
         failClosed(`worker IPC send callback failed: ${error.message}`);
     });
-    if (!accepted) failClosed("worker IPC send backpressure exceeded");
   } catch {
     failClosed("worker IPC send failed");
   }

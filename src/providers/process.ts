@@ -15,6 +15,7 @@ export interface RunProviderProcessOptions {
   prompt: string;
   signal: AbortSignal;
   onEvent?: (event: unknown) => void | Promise<void>;
+  onFailureStderr?: (stderrTail: Buffer) => void;
   env?: NodeJS.ProcessEnv;
   killGraceMs?: number;
   maxLineBytes?: number;
@@ -514,6 +515,12 @@ export async function runProviderProcess(
     ]);
   } catch (error) {
     if (error instanceof AwslError && error.code === "CANCELLED") throw error;
+
+    try {
+      options.onFailureStderr?.(Buffer.from(stderrTail));
+    } catch {
+      // Diagnostic capture must not replace the authoritative process failure.
+    }
 
     await terminateImmediately(child, processGroupPid);
     if (error instanceof AwslError) throw error;
