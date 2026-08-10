@@ -12,8 +12,12 @@ import { executeSandbox } from "../../src/worker/sandbox.js";
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const examplesRoot = join(repositoryRoot, "examples");
 const examples = [
+  ["demo.js", "awsl-demo"],
   ["research-panel.js", "research-panel"],
   ["parallel-code-review.js", "parallel-code-review"],
+  ["knowledge-compile.js", "knowledge-compile"],
+  ["incident-investigation.js", "incident-investigation"],
+  ["migration.js", "migration"],
   ["worktree-refactor.js", "worktree-refactor"],
   ["resume-after-failure.js", "resume-after-failure"],
 ] as const;
@@ -183,6 +187,107 @@ describe("public workflow examples", () => {
     expect(execution.calls.at(-1)?.prompt).not.toContain(
       '"reviewer":"security"',
     );
+  });
+
+  test("knowledge compile excludes failed evidence views before synthesis", async () => {
+    const evidence = (summary: string) => ({
+      summary,
+      evidence: [{ claim: summary, source: "src/example.ts" }],
+      unknowns: [],
+    });
+    const execution = await startExample(
+      "knowledge-compile.js",
+      { scope: "runtime lifecycle", audience: "maintainers" },
+      {
+        "knowledge-source-map": evidence("source map"),
+        "knowledge-contracts": null,
+        "knowledge-operations": evidence("operations"),
+        "knowledge-brief": {
+          overview: "Compiled brief.",
+          architecture: [],
+          contracts: [],
+          operations: [],
+          openQuestions: [],
+        },
+      },
+    );
+
+    await expect(execution.result).resolves.toMatchObject({
+      status: "partial",
+      viewsRequested: 3,
+      viewsCompleted: 2,
+    });
+    expect(execution.calls.at(-1)?.prompt).not.toContain('"view":"contracts"');
+  });
+
+  test("incident investigation excludes a failed view from lead assessment", async () => {
+    const assessment = (observation: string) => ({
+      observations: [observation],
+      hypotheses: [],
+      unknowns: [],
+    });
+    const execution = await startExample(
+      "incident-investigation.js",
+      { incident: "intermittent 502 responses" },
+      {
+        "incident-timeline": assessment("deploy preceded errors"),
+        "incident-runtime": null,
+        "incident-code": assessment("retry path is bounded"),
+        "incident-lead": {
+          status: "undetermined",
+          summary: "More evidence is required.",
+          rootCause: "Not confirmed.",
+          evidence: [],
+          nextActions: ["Collect gateway logs."],
+        },
+      },
+    );
+
+    await expect(execution.result).resolves.toMatchObject({
+      status: "partial",
+      investigatorsRequested: 3,
+      investigatorsCompleted: 2,
+    });
+    expect(execution.calls.at(-1)?.prompt).not.toContain(
+      '"investigator":"runtime"',
+    );
+  });
+
+  test("migration carries its plan into an isolated implementation", async () => {
+    const plan = {
+      scope: ["src/parser.ts"],
+      constraints: ["Preserve callers"],
+      steps: ["Change API", "Update callers"],
+      verification: ["pnpm test"],
+    };
+    const execution = await startExample(
+      "migration.js",
+      { task: "Migrate the parser API" },
+      {
+        "migration-plan": plan,
+        "migration-implementation": {
+          summary: "Migration complete.",
+          changedFiles: ["src/parser.ts"],
+          verification: [{ command: "pnpm test", outcome: "passed" }],
+          remainingRisks: [],
+        },
+      },
+    );
+
+    await expect(execution.result).resolves.toMatchObject({
+      status: "ready-for-review",
+      nextStep: expect.stringContaining("awsl runs show"),
+    });
+    expect(execution.calls).toHaveLength(2);
+    expect(execution.calls[0]?.options).toMatchObject({
+      label: "migration-plan",
+      isolation: "worktree",
+    });
+    expect(execution.calls[1]?.options).toMatchObject({
+      label: "migration-implementation",
+      isolation: "worktree",
+    });
+    expect(execution.calls[1]?.prompt).toContain(JSON.stringify(plan));
   });
 
   test("worktree refactor requests isolation and leaves integration explicit", async () => {

@@ -4,6 +4,7 @@
     "ignore": [
       "dist",
       "examples/*.js",
+      "templates/*.js",
       "sbom.cdx.json",
       "tests/fixtures/oracle/*.js",
       "tests/fixtures/workflows"

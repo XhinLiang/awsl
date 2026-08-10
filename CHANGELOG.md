@@ -6,11 +6,28 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Publish `awsl-workflow@1` as an implementation-backed portable workflow ABI
+  proposal, with explicit source, runtime, failure, replay, and non-goal
+  boundaries.
+- Add a five-workflow gallery for code review, knowledge compilation, incident
+  investigation, isolated migration, and research synthesis.
+- Add `awsl init` with a compact starter and selectable gallery templates,
+  using create-only writes so existing workflow files are never overwritten.
+- Add `awsl demo`, a built-in three-logical-call parallel workflow with a
+  default 8k output-token gate, explicit active-call overshoot semantics, and
+  full durable-run behavior.
+
 - Add `awsl --install-skills` to install the bundled awsl Codex Skill in the
   user-level `~/.agents/skills` directory.
 - Add bounded retries for explicitly recoverable, zero-output provider
   failures, with Codex transient-failure classification and `call.retrying`
   lifecycle events.
+
+### Changed
+
+- Position awsl as the Agent Workflow State Layer: a Codex-verified, durable
+  local runtime for compatible Claude Code Workflows, while keeping
+  authenticated Claude acceptance as an explicit evidence gap.
 
 ## 0.2.0 - 2026-08-06
 

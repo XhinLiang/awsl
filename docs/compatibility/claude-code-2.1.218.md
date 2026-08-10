@@ -13,7 +13,7 @@
 
 **Report date:** 2026-08-06
 
-**Release state:** `@xhinliang/awsl@0.1.1` is published on npm and GitHub.
+**Release state:** `@xhinliang/awsl@0.2.0` is published on npm and GitHub.
 
 **Overall status:** `partial`
 
@@ -118,10 +118,10 @@ express the policy without broadening it or awsl rejects the call.
 | Deterministic CycloneDX 1.6 SBOM | `verified` | `static` | `tests/package/sbom.test.ts` — `generates a deterministic production-only CycloneDX SBOM`; `pnpm run sbom` | The generator records the production lock closure and integrities and is byte-reproducible. Consumer resolution may differ within compatible ranges. |
 | Fail-closed release workflow | `verified` | `static` | `tests/package/ci-security.test.ts` — `keeps publication OIDC-only and fail-closed on release identity`, `pins every GitHub Action to an immutable commit`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The workflow pins `@xhinliang/awsl`, repository, tag, commit, and security-policy identity, then publishes only through GitHub OIDC. |
 | Concrete private vulnerability channel and supported-version policy | `verified` | `host+static` | GitHub private vulnerability reporting is enabled for `XhinLiang/awsl`; `SECURITY.md`; release guard in `.github/workflows/release.yml`; `pnpm exec vitest run tests/package/ci-security.test.ts` | The repository-specific private reporting channel is enabled and the `main`/latest-release support policy is configured. |
-| Owned npm package identity | `verified` | `host+static` | `npm view @xhinliang/awsl@0.1.1 name version dist-tags.latest`; `node -p "require('./package.json').name"` | The public package and the npm `latest` tag both resolve to `@xhinliang/awsl@0.1.1` as of the report date. |
+| Owned npm package identity | `verified` | `host+static` | `npm view @xhinliang/awsl@0.2.0 name version dist-tags.latest`; `node -p "require('./package.json').name"` | The public package and the npm `latest` tag both resolve to `@xhinliang/awsl@0.2.0` as of the report date. |
 | Public repository metadata and trusted publisher | `verified` | `host+static` | `package.json`; `.github/workflows/release.yml`; npm trusted publisher `ff94bc53-3070-4e61-a7d0-eccb9b93a43c` | The publisher is restricted to `XhinLiang/awsl`, workflow `release.yml`, and the `npm publish` action. |
-| Immutable release tag and published package | `verified` | `host` | GitHub release `v0.1.1`; `npm view @xhinliang/awsl@0.1.1 name version dist-tags.latest`; `git rev-parse v0.1.1^{commit}` | The GitHub release and tag resolve to commit `0c9b128`; npm serves version `0.1.1` as `latest`. Publication does not close the provider and oracle gaps documented above. |
-| Hosted CI result for the release revision | `verified` | `host+static` | GitHub Actions CI runs `30510125035` and `30510149531`, plus release run `30510149678`, at `0c9b128`; `.github/workflows/ci.yml` | The Node 22 gate passed on Ubuntu and macOS for the release commit, and the OIDC release job completed. |
+| Immutable release tag and published package | `verified` | `host` | GitHub release `v0.2.0`; `npm view @xhinliang/awsl@0.2.0 name version dist-tags.latest`; `git rev-parse v0.2.0^{commit}` | The GitHub release and tag resolve to commit `6e9724f`; npm serves version `0.2.0` as `latest`. Publication does not close the provider and oracle gaps documented above. |
+| Hosted CI result for the release revision | `verified` | `host+static` | GitHub Actions CI runs `31103618792` and `31103765162`, plus release run `31103763092`, at `6e9724f`; `.github/workflows/ci.yml` | The Node 22 gate passed on Ubuntu and macOS for the release commit, and the OIDC release job completed. |
 
 ## Known gaps
 

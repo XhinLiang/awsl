@@ -75,14 +75,16 @@ One provider is fixed for a run and its child workflows. awsl does not silently
 fall back between Codex and Claude because that would change the execution
 contract during recovery.
 
-Provider executable versions are compatibility inputs. Unsupported versions
-fail closed instead of inheriting untested protocol behavior. Resume also
-rejects drift in the workflow, provider, working directory, and model policy
-before launching another call.
+Provider executable versions are compatibility inputs. Strictly branded newer
+versions may run as `unverified`; malformed or incompatible provider behavior
+fails explicitly. Resume pins the provider, executable profile, working
+directory, Workflow ABI, and model policy. It reloads the workflow from its
+stored path, so authors must not edit that file while a run remains resumable.
 
-Workflow files run in a restricted deterministic VM without `process`,
-`require`, filesystem APIs, imports, current time, or randomness. This keeps
-orchestration reproducible, but it is not a security boundary for hostile
+Workflow files run in a restricted VM without `process`, `require`, filesystem
+APIs, imports, implicit current time, or randomness. These are limited
+deterministic-API restrictions: explicit dates and `Intl` can still observe the
+host locale and timezone. The VM is not a security boundary for hostile
 workflow source. Only trusted workflows should be executed.
 
 ## How awsl compares
@@ -125,6 +127,8 @@ proof of compatibility:
 - The [reporting migration](case-studies/reporting-workflow.md) shows how runtime and domain responsibilities were separated in an existing application.
 - [SECURITY.md](../SECURITY.md) defines the supported versions and reporting channel.
 
-Version `0.1.1` is published. Authenticated Claude workflow acceptance remains
-an evidence gap. The Workflow ABI is owned by awsl; provider versions without
-committed protocol evidence are identified as unverified rather than rejected.
+Version `0.2.0` is published. The Codex path has real-provider acceptance
+evidence. Authenticated Claude workflow acceptance remains an evidence gap, so
+the public positioning is **Codex-verified, Claude-compatible**. The Workflow
+ABI is owned by awsl; provider versions without committed protocol evidence are
+identified as unverified rather than rejected.
