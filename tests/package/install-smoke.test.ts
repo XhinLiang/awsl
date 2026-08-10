@@ -119,8 +119,16 @@ test("packed CLI installs and runs from a clean directory", async () => {
   await writeFile(
     fakeCodex,
     "#!/usr/bin/env node\n" +
-      'if (!process.argv.includes("--version")) process.exit(9)\n' +
-      'process.stdout.write("codex-cli 0.145.0\\n")\n',
+      'import { appendFile } from "node:fs/promises"\n' +
+      "const log = async (kind) => { if (process.env.AWSL_FAKE_CODEX_LOG) await appendFile(process.env.AWSL_FAKE_CODEX_LOG, `${kind}\\n`) }\n" +
+      'if (process.argv.includes("--version")) { await log("version"); process.stdout.write("codex-cli 0.145.0\\n"); process.exit(0) }\n' +
+      'await log("run")\n' +
+      "for await (const chunk of process.stdin) void chunk\n" +
+      "const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\\n`)\n" +
+      'emit({ type: "thread.started", thread_id: "installed-demo" })\n' +
+      'emit({ type: "turn.started" })\n' +
+      'emit({ type: "item.completed", item: { id: "message-1", type: "agent_message", text: "FAKE" } })\n' +
+      'emit({ type: "turn.completed", usage: { input_tokens: 3, cached_input_tokens: 0, output_tokens: 1 } })\n',
     { mode: 0o700 },
   );
   await chmod(fakeCodex, 0o700);
@@ -177,13 +185,20 @@ test("packed CLI installs and runs from a clean directory", async () => {
         "package/docs/case-studies/reporting-workflow.md",
         "package/docs/compatibility/claude-code-2.1.218.md",
         "package/docs/implementation/260729-real-codex-acceptance.md",
+        "package/docs/specifications/awsl-workflow-1.md",
         "package/docs/why-awsl.md",
         "package/examples/parallel-code-review.js",
+        "package/examples/demo.js",
+        "package/examples/knowledge-compile.js",
+        "package/examples/incident-investigation.js",
+        "package/examples/migration.js",
         "package/examples/research-panel.js",
         "package/examples/resume-after-failure.js",
         "package/examples/worktree-refactor.js",
+        "package/gallery/README.md",
         "package/skills/awsl/SKILL.md",
         "package/skills/awsl/agents/openai.yaml",
+        "package/templates/starter.js",
         "package/sbom.cdx.json",
         "package/dist/index.js",
         "package/dist/index.d.ts",
@@ -204,9 +219,12 @@ test("packed CLI installs and runs from a clean directory", async () => {
           entry === "package/docs/compatibility/claude-code-2.1.218.md" ||
           entry ===
             "package/docs/implementation/260729-real-codex-acceptance.md" ||
+          entry === "package/docs/specifications/awsl-workflow-1.md" ||
           entry === "package/docs/why-awsl.md" ||
           entry.startsWith("package/examples/") ||
+          entry.startsWith("package/gallery/") ||
           entry.startsWith("package/skills/") ||
+          entry.startsWith("package/templates/") ||
           entry === "package/sbom.cdx.json" ||
           entry.startsWith("package/dist/"),
       ),
@@ -228,6 +246,8 @@ test("packed CLI installs and runs from a clean directory", async () => {
       join(packageRoot, "docs", "why-awsl.md"),
       join(packageRoot, "docs", "case-studies", "reporting-workflow.md"),
       join(packageRoot, "docs", "compatibility", "claude-code-2.1.218.md"),
+      join(packageRoot, "docs", "specifications", "awsl-workflow-1.md"),
+      join(packageRoot, "gallery", "README.md"),
     ])
       await expectRelativeMarkdownLinksInPackage(packageRoot, markdownPath);
     const packagedText = (
@@ -289,6 +309,88 @@ test("packed CLI installs and runs from a clean directory", async () => {
         "utf8",
       ),
     ).toContain("name: awsl");
+    const initialized = await runInstalled(
+      executable,
+      ["init", "generated.js"],
+      {
+        cwd: project,
+        env: {
+          HOME: installedHome,
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          TMPDIR: root,
+          AWSL_CODEX_COMMAND: join(root, "must-not-run"),
+        },
+      },
+    );
+    expect(initialized).toMatchObject({ code: 0, stderr: "" });
+    expect(await readFile(join(project, "generated.js"), "utf8")).toContain(
+      'name: "starter"',
+    );
+    const initializedGallery = await runInstalled(
+      executable,
+      ["init", "installed-review.js", "--template", "code-review"],
+      {
+        cwd: project,
+        env: {
+          HOME: installedHome,
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          TMPDIR: root,
+        },
+      },
+    );
+    expect(initializedGallery).toMatchObject({ code: 0, stderr: "" });
+    expect(
+      await readFile(join(project, "installed-review.js"), "utf8"),
+    ).toContain('name: "parallel-code-review"');
+    const demoHelp = await runInstalled(executable, ["demo", "--help"], {
+      cwd: project,
+      env: {
+        HOME: installedHome,
+        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        TMPDIR: root,
+      },
+    });
+    expect(demoHelp).toMatchObject({ code: 0, stderr: "" });
+    expect(demoHelp.stdout).toContain("three logical agent calls");
+    const installedDemoLog = join(root, "installed-demo.log");
+    const installedDemo = await runInstalled(
+      executable,
+      [
+        "demo",
+        "Installed tarball demo",
+        "--provider",
+        "codex",
+        "--cwd",
+        project,
+        "--format",
+        "json",
+      ],
+      {
+        cwd: root,
+        env: {
+          HOME: installedHome,
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          TMPDIR: root,
+          AWSL_CODEX_COMMAND: fakeCodex,
+          AWSL_FAKE_CODEX_LOG: installedDemoLog,
+          AWSL_STATE_DIR: join(root, "installed-demo-state"),
+          CODEX_HOME: join(root, "installed-demo-codex-home"),
+        },
+      },
+    );
+    expect(installedDemo).toMatchObject({ code: 0, stderr: "" });
+    expect(JSON.parse(installedDemo.stdout)).toMatchObject({
+      status: "completed",
+      result: {
+        topic: "Installed tarball demo",
+        answers: ["FAKE", "FAKE"],
+        synthesis: "FAKE",
+      },
+      budget: { total: 8000, spent: 3 },
+    });
+    expect(
+      (await readFile(installedDemoLog, "utf8")).trim().split("\n").sort(),
+    ).toEqual(["run", "run", "run", "version"]);
     const execution = await runInstalled(
       executable,
       [

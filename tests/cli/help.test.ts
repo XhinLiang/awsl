@@ -27,9 +27,13 @@ describe("CLI help", () => {
   test.each([
     [[], "Start here:"],
     [["help"], "Start here:"],
+    [["help", "demo"], "three logical agent calls"],
+    [["demo", "--help"], "already active calls may finish above it"],
+    [["help", "init"], "never overwrites"],
+    [["init", "--help"], "code-review"],
     [["help", "run"], "Arguments:"],
     [["run", "--help"], "Arguments:"],
-    [["help", "resume"], "longest valid journal prefix"],
+    [["help", "resume"], "immediately preceding attempt"],
     [["help", "runs"], "current project"],
     [["help", "runs", "list"], "whether interrupted work"],
     [["help", "runs", "show"], "terminal result"],
@@ -54,6 +58,7 @@ describe("CLI help", () => {
     );
     expect(cli.output().stdout).toContain("A run uses one provider");
     expect(cli.output().stdout).toContain("awsl review.js");
+    expect(cli.output().stdout).toContain('{"scope":"the auth module"}');
   });
 
   test("summarizes the JavaScript Workflow ABI without external docs", async () => {

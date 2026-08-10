@@ -1,18 +1,27 @@
-# awsl
+# awsl — durable local runtime with resume for Codex and Claude Code Workflows
 
-![awsl — Reliable workflows for coding agents](docs/assets/awsl-social-preview.png)
+![awsl — Durable local runtime for coding-agent workflows](docs/assets/awsl-social-preview.png)
 
 [![npm](https://img.shields.io/npm/v/@xhinliang/awsl?color=9adf5b)](https://www.npmjs.com/package/@xhinliang/awsl)
 [![CI](https://github.com/XhinLiang/awsl/actions/workflows/ci.yml/badge.svg)](https://github.com/XhinLiang/awsl/actions/workflows/ci.yml)
 [![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-9adf5b)](package.json)
 [![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-9adf5b)](LICENSE)
 
+> **The local control plane for coding-agent workflows.**
+>
+> Run compatible Claude Code Workflows on Codex without rewriting them. Kill
+> the process. Resume the run.
+>
+> **Codex-verified. Claude-compatible.**
+>
 > **The model is the worker. awsl is the runtime.**
 
-Write trusted JavaScript workflows once, run them with Codex or Claude, and
-resume them after interruption. awsl supplies the unglamorous runtime pieces
-that multi-agent scripts usually rebuild: bounded parallelism, shared budgets,
-durable journals, isolated Git worktrees, versioned events, and redaction.
+awsl is the **Agent Workflow State Layer**: a durable local runtime for trusted
+coding-agent Workflow JavaScript. Write a workflow once, run it through Codex
+or the Claude-compatible adapter, and resume it after interruption. awsl owns
+the runtime pieces that multi-agent scripts usually rebuild: bounded
+parallelism, shared budgets, durable journals, isolated Git worktrees,
+versioned events, and redaction.
 
 awsl runs the provider CLIs you already use. It is local, inspectable, and
 deliberately smaller than a general-purpose agent framework.
@@ -35,48 +44,41 @@ the selected provider. An unavailable unused provider does not degrade the
 selected path. Versions with committed protocol evidence are `verified`; other
 strictly branded semantic versions are `unverified` and may still run.
 
-Create `review.js`:
+Run the built-in three-logical-call demo with an 8k output-token gate:
 
-```js
-export const meta = {
-  name: "review",
-  description: "Ask two reviewers and synthesize their findings",
-  phases: [
-    { title: "review", detail: "Run independent reviews" },
-    { title: "synthesize", detail: "Produce one answer" },
-  ],
-}
-
-phase("review")
-const reviews = await parallel([
-  () => agent(`Review for correctness: ${args.request}`, { label: "correctness" }),
-  () => agent(`Review for maintainability: ${args.request}`, { label: "maintainability" }),
-])
-
-if (reviews.some((review) => review === null)) {
-  throw new Error("a required review failed")
-}
-
-phase("synthesize")
-return agent(`Synthesize these reviews:\n${reviews.join("\n\n")}`, {
-  label: "synthesis",
-})
+```bash
+awsl demo --provider codex
 ```
 
-Run the same workflow with either supported provider:
+`demo` invokes the selected model provider and creates a normal durable run.
+The gate stops new calls after recorded output reaches 8k; already active calls
+may finish above it.
+
+Create a ready-to-run review workflow without writing JavaScript:
+
+```bash
+awsl init review.js --template code-review
+awsl workflow inspect review.js
+```
+
+Select the provider when the run starts:
 
 ```bash
 awsl run review.js \
   --provider codex \
-  --args '{"request":"the authentication module"}'
+  --args '{"scope":"the authentication module"}' \
+  --budget 20000
 
 awsl run review.js \
   --provider claude \
-  --args '{"request":"the authentication module"}'
+  --args '{"scope":"the authentication module"}' \
+  --budget 20000
 ```
 
 One provider is pinned for the complete workflow tree. awsl never silently
-falls back to another provider during a run.
+falls back to another provider during a run. The Codex path has real-provider
+acceptance evidence. The Claude-compatible path has protocol and conformance
+coverage; authenticated Claude acceptance remains an explicit evidence gap.
 
 ## Why awsl
 
@@ -103,8 +105,12 @@ or a general-purpose distributed workflow engine is the better choice.
 
 ## Example workflows
 
+- [Browse the five-workflow gallery](gallery/README.md)
 - [`research-panel.js`](examples/research-panel.js) — independent research and synthesis
 - [`parallel-code-review.js`](examples/parallel-code-review.js) — parallel specialist review
+- [`knowledge-compile.js`](examples/knowledge-compile.js) — source-grounded repository knowledge
+- [`incident-investigation.js`](examples/incident-investigation.js) — evidence-ranked incident assessment
+- [`migration.js`](examples/migration.js) — planned migration in an isolated worktree
 - [`worktree-refactor.js`](examples/worktree-refactor.js) — isolated coding-agent worktrees
 - [`resume-after-failure.js`](examples/resume-after-failure.js) — stable labels and durable reuse
 
@@ -127,6 +133,9 @@ executables. This release normalizes structurally compatible workflow files to
 have committed protocol evidence; newer versions are accepted as `unverified`
 rather than rejected by a patch-version allowlist.
 
+Read the full
+[`awsl-workflow@1` portable workflow ABI proposal](docs/specifications/awsl-workflow-1.md).
+
 See the
 [compatibility report](docs/compatibility/claude-code-2.1.218.md) for the
 evidence behind each verified, partial, or unsupported behavior.
@@ -144,6 +153,8 @@ pnpm awsl --help
 
 ```text
 awsl <workflow>
+awsl demo [topic]
+awsl init [file] [--template <template>]
 awsl run <workflow>
 awsl resume <run-id>
 awsl runs list
@@ -171,9 +182,11 @@ awsl help <command>
 Input JSON is strict, rejects duplicate keys, and is limited to 512 KiB.
 
 `resume` accepts replacement `--args`, `--args-file`, `--budget`, and
-`--format`. The workflow source identity, provider, executable, provider
-profile, working directory, Workflow ABI, and model policy remain
-pinned. Drift is rejected before another provider call starts.
+`--format`. The provider, executable profile, working directory, Workflow ABI,
+and model policy remain pinned. The workflow is reloaded from its stored path;
+source bytes are not content-pinned, so do not edit a workflow while its run is
+still resumable. Matching calls reuse the immediately preceding attempt's
+longest valid result prefix.
 
 Output contracts:
 
@@ -194,6 +207,8 @@ The first statement must be a pure literal `export const meta = ...`.
 source is limited to 512 KiB and may use top-level `await` and `return`.
 `awsl workflow inspect <file>` reports the normalized Workflow ABI. The ABI is
 versioned by awsl rather than by the installed Claude or Codex executable.
+The normative observable contract is documented in the
+[`awsl-workflow@1` proposal](docs/specifications/awsl-workflow-1.md).
 
 The workflow global API is:
 
@@ -230,7 +245,9 @@ root provider and shared limits; a child cannot recursively start another child.
 The VM deliberately exposes no `process`, `require`, filesystem API, CommonJS
 globals, static or dynamic imports. String and WebAssembly code generation,
 `Date.now()`, bare or zero-argument `Date`, and `Math.random()` are disabled.
-This is a deterministic compatibility boundary, not a hostile-code sandbox.
+These are limited deterministic-API restrictions, not a complete
+reproducibility guarantee or a hostile-code sandbox. Explicit dates and `Intl`
+can still observe host locale and timezone behavior.
 
 ## Configuration
 
@@ -289,11 +306,15 @@ Runs have `running`, `paused`, `completed`, `failed`, or `killed` status. State
 is private by default: directories use mode 0700 and state, journal, lock, and
 optional raw-event files use mode 0600.
 
-Resume replays only the longest valid contiguous `journal-key-v2` prefix.
-Calls after the first missing or mismatched entry execute again. This gives
-at-least-once behavior: if an external side effect completed but its successful
-journal record was not durably stored, a resume can repeat that call. Workflow
-authors must use idempotency keys or their own reconciliation for side effects.
+Resume considers only the immediately preceding attempt and replays its longest
+valid contiguous `journal-key-v2` prefix. Only completed, non-null result
+observations with complete output-token usage are reusable;
+`compatibility-null`, failed, and indeterminate observations are not. Budget and
+call-cap gates run before replay lookup. Calls after the first missing or
+mismatched entry execute again. This gives at-least-once behavior: if an
+external side effect completed but its successful journal record was not
+durably stored, a resume can repeat that call. Workflow authors must use
+idempotency keys or their own reconciliation for side effects.
 
 Each logical provider call also has a bounded transient-failure retry: at most
 three attempts with backoff. awsl retries only a provider error explicitly

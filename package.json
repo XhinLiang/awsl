@@ -1,7 +1,7 @@
 {
   "name": "@xhinliang/awsl",
   "version": "0.2.0",
-  "description": "Durable JavaScript workflows for coding agents — Codex or Claude, with parallelism, resume, budgets, and Git worktrees",
+  "description": "Codex-verified, Claude-compatible durable local runtime for Claude Code Workflow JS, with resume, checkpoints, budgets, and Git worktrees",
   "keywords": [
     "agentic-workflows",
     "coding-agents",
@@ -53,9 +53,12 @@
     "docs/case-studies/reporting-workflow.md",
     "docs/compatibility/claude-code-2.1.218.md",
     "docs/implementation/260729-real-codex-acceptance.md",
+    "docs/specifications/awsl-workflow-1.md",
     "docs/why-awsl.md",
     "examples",
+    "gallery",
     "skills",
+    "templates",
     "sbom.cdx.json"
   ],
   "scripts": {

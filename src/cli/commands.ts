@@ -1,7 +1,10 @@
 import { execFile as nodeExecFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { Command, CommanderError } from "commander";
@@ -86,7 +89,10 @@ if (
 )
   throw new Error("invalid awsl package version");
 const packageVersion = (packageManifest as { version: string }).version;
+const packageRoot = fileURLToPath(new URL("../../", import.meta.url));
 const knownCommands = new Set([
+  "demo",
+  "init",
   "run",
   "resume",
   "runs",
@@ -158,6 +164,28 @@ interface ResumeCommandOptions {
 interface FormatCommandOptions {
   readonly format?: string;
 }
+
+interface InitCommandOptions {
+  readonly template?: string;
+}
+
+interface DemoCommandOptions {
+  readonly provider?: string;
+  readonly cwd?: string;
+  readonly budget?: string;
+  readonly format?: string;
+}
+
+const initTemplates = Object.freeze({
+  starter: "templates/starter.js",
+  "code-review": "examples/parallel-code-review.js",
+  "knowledge-compile": "examples/knowledge-compile.js",
+  "incident-investigation": "examples/incident-investigation.js",
+  migration: "examples/migration.js",
+  "research-panel": "examples/research-panel.js",
+} as const);
+
+type InitTemplate = keyof typeof initTemplates;
 
 interface PreparedRuntime {
   readonly loaded: LoadedConfig;
@@ -861,6 +889,79 @@ async function runsPauseCommand(
   });
 }
 
+async function initCommand(
+  file: string,
+  rawOptions: InitCommandOptions,
+  context: NormalizedContext,
+): Promise<0> {
+  const template = rawOptions.template ?? "starter";
+  if (!Object.hasOwn(initTemplates, template))
+    usage(
+      `unknown template; expected one of ${Object.keys(initTemplates).join(", ")}`,
+    );
+  const templatePath = join(
+    packageRoot,
+    initTemplates[template as InitTemplate],
+  );
+  let source: string;
+  try {
+    source = await readFile(templatePath, "utf8");
+  } catch (error) {
+    throw new AwslError(
+      "PERSISTENCE_ERROR",
+      "workflow template is unavailable",
+      {
+        recoverable: false,
+        cause: error,
+      },
+    );
+  }
+
+  const destination = resolve(context.cwd, file);
+  await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(destination, source, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === "object" &&
+      (error as NodeJS.ErrnoException).code === "EEXIST"
+    )
+      usage("workflow file already exists");
+    throw new AwslError("PERSISTENCE_ERROR", "could not create workflow file", {
+      recoverable: false,
+      cause: error,
+    });
+  }
+
+  const displayPath = file.startsWith("-") ? destination : file;
+  const quotedPath = JSON.stringify(displayPath);
+  await context.writeStdout(
+    `Created ${quotedPath} from the ${template} template.\nInspect: awsl workflow inspect <created-file>\nRun: awsl run <created-file>\n`,
+  );
+  return 0;
+}
+
+async function demoCommand(
+  topic: string,
+  rawOptions: DemoCommandOptions,
+  context: NormalizedContext,
+): Promise<number> {
+  return runCommand(
+    join(packageRoot, "examples/demo.js"),
+    {
+      ...rawOptions,
+      args: JSON.stringify({ topic }),
+      budget: rawOptions.budget ?? "8000",
+    },
+    context,
+  );
+}
+
 async function workflowInspectCommand(
   file: string,
   rawOptions: FormatCommandOptions,
@@ -1002,7 +1103,9 @@ function buildProgram(
   const program = new Command();
   program
     .name("awsl")
-    .description("Run durable JavaScript workflows with Codex or Claude")
+    .description(
+      "Run durable local coding-agent workflows with Codex or a Claude-compatible adapter",
+    )
     .version(packageVersion)
     .option(
       "--install-skills",
@@ -1021,8 +1124,8 @@ function buildProgram(
       `
 Start here:
   awsl doctor
-  awsl workflow inspect <workflow>
-  awsl run <workflow> --provider codex --args '{"key":"value"}'
+  awsl demo --provider codex
+  awsl init
 
 Workflow contract:
   Start with a pure literal "export const meta = { name, description }".
@@ -1032,6 +1135,58 @@ Workflow contract:
 Use "awsl help <command>" or "awsl help <group> <command>" for details.
 Workflow files are trusted code. A run uses one provider and never falls back.`,
     );
+  const demo = addFormat(
+    program
+      .command("demo")
+      .description("run a built-in durable workflow demo")
+      .argument(
+        "[topic]",
+        "question for the demo panel",
+        "What makes a coding-agent workflow worth making durable?",
+      )
+      .option("--provider <provider>", "codex or claude")
+      .option("--cwd <path>", "session working directory")
+      .option("--budget <tokens>", "output token budget", "8000"),
+  ).addHelpText(
+    "after",
+    `
+Runs two perspectives in parallel and one synthesis through the selected model
+provider. This invokes three logical agent calls and creates durable run state.
+Recoverable zero-output provider failures may add bounded retry attempts. The
+default 8,000-token gate stops new calls after recorded output reaches the
+limit; already active calls may finish above it. The agents are prompted not to
+inspect files or use tools; the selected provider policy remains authoritative.
+
+Examples:
+  awsl demo --provider codex
+  awsl demo "Should this workflow be resumable?" --budget 6000 --format json`,
+  );
+  demo.action(async (topic: string, options: DemoCommandOptions) => {
+    setExitCode(await demoCommand(topic, options, context));
+  });
+
+  const init = program
+    .command("init")
+    .description("create a workflow from a built-in template")
+    .argument("[file]", "destination workflow file", "workflow.js")
+    .option("--template <template>", "built-in workflow template", "starter")
+    .addHelpText(
+      "after",
+      `
+Creates a new file and never overwrites an existing path.
+
+Templates:
+  starter, code-review, knowledge-compile, incident-investigation,
+  migration, research-panel
+
+Examples:
+  awsl init
+  awsl init review.js --template code-review`,
+    );
+  init.action(async (file: string, options: InitCommandOptions) => {
+    setExitCode(await initCommand(file, options, context));
+  });
+
   const run = addFormat(
     program
       .command("run")
@@ -1054,7 +1209,7 @@ Output:
   A run uses one provider for the complete workflow tree and never falls back.
 
 Examples:
-  awsl run review.js --provider codex --args '{"request":"review auth"}'
+  awsl run review.js --provider codex --args '{"scope":"the auth module"}'
   awsl review.js --args-file input.json --format json`,
   );
   run.action(async (workflow: string, options: RunCommandOptions) => {
@@ -1072,8 +1227,9 @@ Examples:
   ).addHelpText(
     "after",
     `
-Resume reuses the longest valid journal prefix. Provider, executable version,
-working directory, workflow sources, and model policy remain pinned.
+Resume reuses the immediately preceding attempt's longest valid result prefix.
+Provider, executable version, working directory, Workflow ABI, and model policy
+remain pinned. The workflow is reloaded from its stored path.
 
 Example:
   awsl resume <run-id> --args-file input.json --format json`,
