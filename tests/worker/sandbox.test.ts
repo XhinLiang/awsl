@@ -10,6 +10,7 @@ import { compileWorkflow } from "../../src/compat/compile.js";
 import { AwslError } from "../../src/core/errors.js";
 import { WorkerHost } from "../../src/worker/host.js";
 import {
+  MAX_CONCURRENT_WORKER_CALLS,
   MAX_IPC_PACKET_BYTES,
   isChildMessage,
   isPacketData,
@@ -309,6 +310,30 @@ describe("VM worker", () => {
       /functions/,
     );
   });
+
+  test("bounds a large parallel agent fanout before worker IPC", async () => {
+    let active = 0;
+    let peak = 0;
+    let calls = 0;
+    const result = await run(
+      "return await parallel(Array.from({length:565},(_,index)=>()=>agent(String(index))))",
+      {
+        agent: async (prompt) => {
+          calls += 1;
+          active += 1;
+          peak = Math.max(peak, active);
+          await delay(1);
+          active -= 1;
+          return { value: Number(prompt) };
+        },
+        watchdogMs: 10_000,
+      },
+    );
+
+    expect(result).toEqual(Array.from({ length: 565 }, (_, index) => index));
+    expect(calls).toBe(565);
+    expect(peak).toBeLessThanOrEqual(MAX_CONCURRENT_WORKER_CALLS);
+  }, 20_000);
 
   test("pipeline preserves item order, serial stages and null short circuit", async () => {
     const value = await run(
@@ -1241,36 +1266,40 @@ describe("VM worker", () => {
     }
   });
 
-  test("fails closed quickly when the real worker send reports backpressure", async () => {
+  test("accepts worker send backpressure when the callback succeeds", async () => {
     const host = new WorkerHost({
       workerPath: backpressureWorker,
       watchdogMs: 5_000,
-      agent: async () => ({ value: "unexpected" }),
+      agent: async () => ({ value: "ok" }),
     });
-    await expectFastWorkflowError(
+    await expect(
       host.run({ ...compiled("return await agent('request')"), args: {} }),
-    );
+    ).resolves.toBe("ok");
     await host.close();
   });
 
-  test("fails closed when host to worker send reports backpressure", async () => {
+  test("accepts host send backpressure when the callback succeeds", async () => {
     let restoreSend: (() => void) | undefined;
     const host = new WorkerHost({
       watchdogMs: 5_000,
-      agent: async () => ({ value: "unexpected" }),
+      agent: async () => ({ value: "ok" }),
       forkWorker: (modulePath, args, options) => {
         const child = fork(modulePath, args, options);
-        const send = vi
-          .spyOn(child, "send")
-          .mockImplementation(() => false as never);
+        const originalSend = child.send;
+        const send = vi.spyOn(child, "send").mockImplementation(((
+          ...sendArgs: unknown[]
+        ) => {
+          Reflect.apply(originalSend, child, sendArgs);
+          return false;
+        }) as typeof child.send);
         restoreSend = () => send.mockRestore();
         return child;
       },
     });
     try {
-      await expectFastWorkflowError(
+      await expect(
         host.run({ ...compiled("return await agent('request')"), args: {} }),
-      );
+      ).resolves.toBe("ok");
     } finally {
       restoreSend?.();
       await host.close();
@@ -1498,7 +1527,7 @@ describe("VM worker", () => {
     const defaultHost = new WorkerHost({ workerPath: heapWorker });
     await expect(
       defaultHost.run({ ...compiled("return 1"), args: {} }),
-    ).resolves.toEqual(["--max-old-space-size=128"]);
+    ).resolves.toEqual(["--max-old-space-size=512"]);
     await defaultHost.close();
 
     const host = new WorkerHost({

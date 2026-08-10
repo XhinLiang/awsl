@@ -37,12 +37,13 @@ for (const name of schema.required) {
     typeof name !== "string" ||
     rule === null ||
     typeof rule !== "object" ||
-    !Object.hasOwn(rule, "const")
+    !Array.isArray(rule.enum) ||
+    rule.enum.length !== 1
   ) {
     process.stderr.write("unsupported fixture schema\n");
     process.exit(2);
   }
-  result[name] = rule.const;
+  result[name] = rule.enum[0];
 }
 
 const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);

@@ -1,4 +1,4 @@
-import { access, lstat, readFile, readdir } from "node:fs/promises";
+import { access, lstat, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { describe, expect, test } from "vitest";
@@ -11,6 +11,7 @@ import type {
 } from "../../src/core/types.js";
 import {
   CODEX_CAPABILITIES,
+  CODEX_FILE_RESULT_PROMPT_BYTES,
   CodexAdapter,
   type CodexAdapterOptions,
   buildCodexArgv,
@@ -866,6 +867,7 @@ describe("Codex adapter contract", () => {
       error: {
         code: "PROVIDER_ERROR",
         provider: "codex",
+        recoverable: false,
       },
       kind: "error",
       usage: {
@@ -874,6 +876,126 @@ describe("Codex adapter contract", () => {
         outputTokens: 3,
       },
     });
+  });
+
+  test("marks a transient pre-output turn failure as safely recoverable", async () => {
+    const fixture = fakeRunner([
+      { type: "thread.started", thread_id: "thread-1" },
+      { type: "turn.started" },
+      {
+        type: "item.completed",
+        item: {
+          id: "item-0",
+          type: "error",
+          message:
+            "Skill descriptions were shortened to fit the skills context budget.",
+        },
+      },
+      {
+        type: "error",
+        message: "unexpected status 502 Bad Gateway",
+      },
+      {
+        type: "turn.failed",
+        error: { message: "unexpected status 502 Bad Gateway" },
+      },
+    ]);
+
+    await expect(
+      new CodexAdapter({ identity, processRunner: fixture.run }).run(request()),
+    ).resolves.toMatchObject({
+      kind: "error",
+      error: {
+        code: "PROVIDER_ERROR",
+        recoverable: true,
+      },
+      usage: { complete: true, outputTokens: 0 },
+    });
+  });
+
+  test("does not recover a transient failure after substantive provider output", async () => {
+    const fixture = fakeRunner([
+      { type: "thread.started", thread_id: "thread-1" },
+      { type: "turn.started" },
+      {
+        type: "item.started",
+        item: { id: "command-1", type: "command_execution" },
+      },
+      {
+        type: "turn.failed",
+        error: { message: "unexpected status 502 Bad Gateway" },
+      },
+    ]);
+
+    await expect(
+      new CodexAdapter({ identity, processRunner: fixture.run }).run(request()),
+    ).resolves.toMatchObject({
+      kind: "error",
+      error: { recoverable: false },
+      usage: { complete: false },
+    });
+  });
+
+  test("retains safe retry classification when the failed Codex process exits", async () => {
+    const run: ProcessRunner = async (options) => {
+      await options.onEvent?.({
+        type: "thread.started",
+        thread_id: "thread-1",
+      });
+      await options.onEvent?.({ type: "turn.started" });
+      await options.onEvent?.({
+        type: "error",
+        message: "connection reset by peer",
+      });
+      await options.onEvent?.({
+        type: "turn.failed",
+        error: { message: "connection reset by peer" },
+      });
+      throw new Error("Codex exited with status 1");
+    };
+
+    await expect(
+      new CodexAdapter({ identity, processRunner: run }).run(request()),
+    ).resolves.toMatchObject({
+      kind: "error",
+      error: {
+        message: "Codex process transport failed",
+        recoverable: true,
+      },
+      usage: { complete: true, outputTokens: 0 },
+    });
+  });
+
+  test("classifies transient failure stderr without exposing it in the error", async () => {
+    const run: ProcessRunner = async (options) => {
+      options.onFailureStderr?.(
+        Buffer.from(
+          "provider retry exhausted: unexpected status 502 Bad Gateway",
+        ),
+      );
+      throw new AwslError(
+        "PROVIDER_ERROR",
+        "provider process exited unsuccessfully",
+        { recoverable: false },
+      );
+    };
+
+    const outcome = await new CodexAdapter({
+      identity,
+      processRunner: run,
+    }).run(request());
+
+    expect(outcome).toMatchObject({
+      kind: "error",
+      error: {
+        message: "Codex process transport failed",
+        recoverable: true,
+      },
+      usage: { complete: true, outputTokens: 0 },
+    });
+    if (outcome.kind === "error") {
+      expect(outcome.error.message).not.toContain("Bad Gateway");
+    }
   });
 
   test("uses the retained top-level error only as a failure fallback", async () => {
@@ -1107,6 +1229,17 @@ describe("Codex adapter contract", () => {
           : event,
       ),
       async (options) => {
+        expect(options.prompt).toBe(
+          [
+            "<awsl-structured-output>",
+            "Complete the requested task before emitting the final JSON value.",
+            "Populate every collection from the actual task result. Return an empty collection only after verifying that no matching items exist.",
+            "Do not truncate, summarize, or replace a large result with an empty collection. Use the available tools to derive the exact values when the task requests them.",
+            "</awsl-structured-output>",
+            "",
+            "do the work",
+          ].join("\n"),
+        );
         const marker = options.argv.indexOf("--output-schema");
         expect(marker).toBeGreaterThan(-1);
         schemaPath = options.argv[marker + 1] ?? "";
@@ -1143,6 +1276,67 @@ describe("Codex adapter contract", () => {
       },
     });
     await expect(access(schemaPath)).rejects.toThrow();
+  });
+
+  test("uses a private result file for a large structured prompt and cleans up", async () => {
+    let schemaPath = "";
+    let resultPath = "";
+    const events = structuredClone(successEvents);
+    const fixture = fakeRunner(events, async (options) => {
+      const pathLine = options.prompt
+        .split("\n")
+        .find((line) =>
+          line.startsWith(
+            "Write the exact JSON result to this file, replacing its current contents: ",
+          ),
+        );
+      expect(pathLine).toBeDefined();
+      resultPath = JSON.parse(
+        pathLine?.slice(pathLine.indexOf(": ") + 2) ?? "",
+      ) as string;
+      await writeFile(resultPath, '{"rows":[1,2,3]}', "utf8");
+
+      const marker = options.argv.indexOf("--output-schema");
+      schemaPath = options.argv[marker + 1] ?? "";
+      expect(JSON.parse(await readFile(schemaPath, "utf8"))).toEqual({
+        additionalProperties: false,
+        properties: {
+          result_path: { enum: [resultPath], type: "string" },
+        },
+        required: ["result_path"],
+        type: "object",
+      });
+      const message = events[5] as { item: { text: string } };
+      message.item.text = JSON.stringify({ result_path: resultPath });
+    });
+    const adapter = new CodexAdapter({
+      identity,
+      processRunner: fixture.run,
+    });
+
+    await expect(
+      adapter.run(
+        request({
+          prompt: "x".repeat(CODEX_FILE_RESULT_PROMPT_BYTES),
+          schema: {
+            additionalProperties: false,
+            properties: {
+              rows: { items: { type: "integer" }, type: "array" },
+            },
+            required: ["rows"],
+            type: "object",
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      kind: "completed",
+      result: {
+        data: { rows: [1, 2, 3] },
+        text: '{"rows":[1,2,3]}',
+      },
+    });
+    await expect(access(schemaPath)).rejects.toThrow();
+    await expect(access(resultPath)).rejects.toThrow();
   });
 
   test("closes every reachable object required list only in the Codex schema packet", async () => {

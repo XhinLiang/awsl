@@ -2,6 +2,7 @@ import type { AwslErrorCode, AwslErrorJSON } from "../core/errors.js";
 
 export const MAX_PENDING_WORKER_REQUESTS = 1_024;
 export const MAX_WORKER_AGENT_CALLS = 1_000;
+export const MAX_CONCURRENT_WORKER_CALLS = 16;
 export const MAX_IPC_PACKET_BYTES = 8 * 1024 * 1024;
 export const MAX_IPC_PACKET_DEPTH = 64;
 export const MAX_IPC_PACKET_NODES = 100_000;

@@ -1,0 +1,4 @@
+interface:
+  display_name: "awsl Workflows"
+  short_description: "Run durable coding-agent workflows with awsl"
+  default_prompt: "Use $awsl to run this repository workflow with Codex."

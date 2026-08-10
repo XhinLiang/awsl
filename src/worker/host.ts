@@ -139,7 +139,7 @@ export class WorkerHost {
           `${name} must be a positive integer no greater than 2147483647`,
           { recoverable: false },
         );
-    const maxOldSpaceMb = options.maxOldSpaceMb ?? 128;
+    const maxOldSpaceMb = options.maxOldSpaceMb ?? 512;
     if (
       !Number.isInteger(maxOldSpaceMb) ||
       maxOldSpaceMb < 16 ||
@@ -397,7 +397,7 @@ export class WorkerHost {
     }
     if (!child?.connected) return;
     try {
-      const accepted = child.send(message, (error) => {
+      child.send(message, (error) => {
         if (error && this.#child === child && !this.#aborting)
           this.#settle?.reject(
             new AwslError("WORKFLOW_ERROR", error.message, {
@@ -406,8 +406,6 @@ export class WorkerHost {
             }),
           );
       });
-      if (!accepted)
-        this.#failClosed(child, "worker IPC send backpressure exceeded");
     } catch (error) {
       if (this.#child === child && !this.#aborting)
         this.#settle?.reject(
@@ -426,7 +424,7 @@ export class WorkerHost {
     }
     if (!child.connected) return;
     try {
-      const accepted = child.send(message, (error) => {
+      child.send(message, (error) => {
         if (error && this.#child === child && !this.#aborting)
           this.#settle?.reject(
             new AwslError("WORKFLOW_ERROR", error.message, {
@@ -435,8 +433,6 @@ export class WorkerHost {
             }),
           );
       });
-      if (!accepted)
-        this.#failClosed(child, "worker IPC send backpressure exceeded");
     } catch (error) {
       if (this.#child === child && !this.#aborting)
         this.#settle?.reject(

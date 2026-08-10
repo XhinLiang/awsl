@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Add `awsl --install-skills` to install the bundled awsl Codex Skill in the
+  user-level `~/.agents/skills` directory.
+- Add bounded retries for explicitly recoverable, zero-output provider
+  failures, with Codex transient-failure classification and `call.retrying`
+  lifecycle events.
+
 ## 0.2.0 - 2026-08-06
 
 ### Added

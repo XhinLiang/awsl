@@ -1,3 +1,8 @@
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
+import { TextDecoder } from "node:util";
+
+import { COMPATIBILITY_PROFILE } from "../compat/profile.js";
 import {
   validateCodexProfile,
   validateProviderArgs,
@@ -109,10 +114,14 @@ function compatibilityError(message: string): AwslError {
   });
 }
 
-function providerError(message: string, cause?: unknown): AwslError {
+function providerError(
+  message: string,
+  cause?: unknown,
+  recoverable = false,
+): AwslError {
   return new AwslError("PROVIDER_ERROR", message, {
     provider: "codex",
-    recoverable: false,
+    recoverable,
     cause,
   });
 }
@@ -289,6 +298,41 @@ function errorMessage(value: unknown): string | undefined {
   return undefined;
 }
 
+const TRANSIENT_CODEX_FAILURE =
+  /(?:\b(?:408|429|500|502|503|504)\b|bad gateway|gateway timeout|service unavailable|temporarily unavailable|connection (?:closed|refused|reset)|connection reset by peer|econnreset|etimedout|network error|request timed out|upstream (?:connect|error|failure)|timeout)/i;
+
+function isTransientCodexFailure(value: string): boolean {
+  return TRANSIENT_CODEX_FAILURE.test(value);
+}
+
+function isCodexInitializationWarning(
+  eventType: string,
+  item: Record<string, unknown>,
+  beforeTurn: boolean,
+): boolean {
+  return (
+    eventType === "item.completed" &&
+    item.type === "error" &&
+    (beforeTurn ||
+      (typeof item.message === "string" &&
+        item.message.startsWith("Skill descriptions were shortened to fit")))
+  );
+}
+
+function hasOnlyZeroUsage(usage: ProviderUsage): boolean {
+  return [
+    usage.inputTokens,
+    usage.cachedInputTokens,
+    usage.outputTokens,
+    usage.reasoningTokens,
+  ].every((value) => value === undefined || value === 0);
+}
+
+const RETRYABLE_ZERO_USAGE: ProviderUsage = Object.freeze({
+  complete: true,
+  outputTokens: 0,
+});
+
 const ITEM_TYPES = new Set([
   "agent_message",
   "command_execution",
@@ -308,6 +352,7 @@ class CodexProtocol {
   #terminalError?: AwslError;
   #threadStarted = false;
   #turnStarted = false;
+  #hasSubstantiveItem = false;
   #usage: ProviderUsage = { complete: false };
 
   get observation(): ProviderObservation | undefined {
@@ -318,6 +363,20 @@ class CodexProtocol {
 
   get usage(): ProviderUsage {
     return { ...this.#usage };
+  }
+
+  retryableTransportFailure(cause: unknown, failureStderr?: string): boolean {
+    if (this.#hasSubstantiveItem || !hasOnlyZeroUsage(this.#usage))
+      return false;
+    const detail =
+      this.#lastCriticalError ??
+      (failureStderr === undefined
+        ? undefined
+        : sanitizeProviderDetail(failureStderr)) ??
+      (cause instanceof Error
+        ? sanitizeProviderDetail(cause.message)
+        : undefined);
+    return detail !== undefined && isTransientCodexFailure(detail);
   }
 
   consume(event: unknown): void {
@@ -362,13 +421,15 @@ class CodexProtocol {
         ) {
           throw providerError(`Codex emitted an unsupported ${type} item`);
         }
-        const isInitializationWarning =
-          !this.#turnStarted &&
-          type === "item.completed" &&
-          item.type === "error";
+        const isInitializationWarning = isCodexInitializationWarning(
+          type,
+          item,
+          !this.#turnStarted,
+        );
         if (!this.#turnStarted && !isInitializationWarning) {
           throw providerError(`Codex emitted ${type} before turn.started`);
         }
+        if (!isInitializationWarning) this.#hasSubstantiveItem = true;
         if (type === "item.completed" && item.type === "agent_message") {
           if (typeof item.text !== "string") {
             throw providerError(
@@ -407,7 +468,16 @@ class CodexProtocol {
           errorMessage(object.message) ??
           this.#lastCriticalError ??
           "unspecified turn failure";
-        this.#terminalError = providerError(`Codex turn failed: ${detail}`);
+        const recoverable =
+          !this.#hasSubstantiveItem &&
+          hasOnlyZeroUsage(this.#usage) &&
+          isTransientCodexFailure(detail);
+        if (recoverable) this.#usage = RETRYABLE_ZERO_USAGE;
+        this.#terminalError = providerError(
+          `Codex turn failed: ${detail}`,
+          undefined,
+          recoverable,
+        );
         break;
       }
       default:
@@ -418,6 +488,7 @@ class CodexProtocol {
   finish(
     request: ProviderRequest,
     schema: PreparedProviderJsonSchema | undefined,
+    fileResult?: { packet: string; path: string },
   ): ProviderOutcome {
     if (this.#terminal === "failed") {
       return {
@@ -436,24 +507,62 @@ class CodexProtocol {
         this.#lastCriticalError === undefined
           ? "without a terminal event"
           : `after reporting: ${this.#lastCriticalError}`;
+      const recoverable =
+        this.#lastCriticalError !== undefined &&
+        this.retryableTransportFailure(this.#lastCriticalError);
       return {
         kind: "error",
-        error: providerError(`Codex stream ended ${suffix}`),
-        usage: this.usage,
+        error: providerError(
+          `Codex stream ended ${suffix}`,
+          undefined,
+          recoverable,
+        ),
+        usage: recoverable ? RETRYABLE_ZERO_USAGE : this.usage,
         ...(this.observation === undefined
           ? {}
           : { observation: this.observation }),
       };
     }
 
+    let completedText = this.#completedText;
+    if (fileResult !== undefined) {
+      try {
+        const reference = JSON.parse(completedText) as unknown;
+        if (
+          !isRecord(reference) ||
+          Object.keys(reference).length !== 1 ||
+          reference.result_path !== fileResult.path
+        ) {
+          throw new TypeError("invalid result file reference");
+        }
+        completedText = fileResult.packet;
+      } catch (error) {
+        return {
+          kind: "error",
+          error: new AwslError(
+            "SCHEMA_ERROR",
+            "Codex returned an invalid structured result file reference",
+            {
+              provider: "codex",
+              recoverable: false,
+              cause: error,
+            },
+          ),
+          usage: this.usage,
+          ...(this.observation === undefined
+            ? {}
+            : { observation: this.observation }),
+        };
+      }
+    }
     const result = {
-      text: this.#completedText,
+      text: completedText,
       ...(request.model === undefined ? {} : { model: request.model }),
       ...(request.effort === undefined ? {} : { effort: request.effort }),
     };
     if (request.schema !== undefined) {
       try {
-        const data = JSON.parse(this.#completedText) as unknown;
+        const data = JSON.parse(completedText) as unknown;
         if (schema === undefined || !schema.matches(data)) {
           return {
             kind: "error",
@@ -520,18 +629,67 @@ function escapedAgentName(name: string): string {
     .replaceAll(">", "&gt;");
 }
 
+const STRUCTURED_OUTPUT_CONTRACT = [
+  "<awsl-structured-output>",
+  "Complete the requested task before emitting the final JSON value.",
+  "Populate every collection from the actual task result. Return an empty collection only after verifying that no matching items exist.",
+  "Do not truncate, summarize, or replace a large result with an empty collection. Use the available tools to derive the exact values when the task requests them.",
+  "</awsl-structured-output>",
+].join("\n");
+
+export const CODEX_FILE_RESULT_PROMPT_BYTES = 256 * 1024;
+
+function fileResultContract(path: string, schemaPacket: string): string {
+  return [
+    "<awsl-file-result>",
+    "The complete structured result may be too large for the final response.",
+    `Write the exact JSON result to this file, replacing its current contents: ${JSON.stringify(path)}`,
+    `The file contents must match this JSON Schema: ${schemaPacket}`,
+    `After the file is complete, emit only this final JSON reference: ${JSON.stringify({ result_path: path })}`,
+    "Do not embed the result itself in the final response.",
+    "</awsl-file-result>",
+  ].join("\n");
+}
+
 function providerPrompt(
   request: ProviderRequest,
   agent: NegotiatedAgentPolicy | undefined,
+  fileResult?: { path: string; schemaPacket: string },
 ): string {
-  if (!agent) return request.prompt;
-  return [
-    `<awsl-agent name="${escapedAgentName(agent.name)}">`,
-    agent.instructions,
-    "</awsl-agent>",
-    "",
-    request.prompt,
-  ].join("\n");
+  const sections: string[] = [];
+  if (agent) {
+    sections.push(
+      [
+        `<awsl-agent name="${escapedAgentName(agent.name)}">`,
+        agent.instructions,
+        "</awsl-agent>",
+      ].join("\n"),
+    );
+  }
+  if (request.schema !== undefined) sections.push(STRUCTURED_OUTPUT_CONTRACT);
+  if (fileResult !== undefined)
+    sections.push(fileResultContract(fileResult.path, fileResult.schemaPacket));
+  sections.push(request.prompt);
+  return sections.join("\n\n");
+}
+
+async function readStructuredResultFile(path: string): Promise<string> {
+  const noFollow = constants.O_NOFOLLOW ?? 0;
+  const handle = await open(path, constants.O_RDONLY | noFollow);
+  try {
+    const stat = await handle.stat();
+    if (
+      !stat.isFile() ||
+      stat.size <= 0 ||
+      stat.size > COMPATIBILITY_PROFILE.providerProcess.maxNdjsonLineBytes
+    ) {
+      throw new TypeError("structured result file has an invalid size");
+    }
+    const bytes = await handle.readFile();
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } finally {
+    await handle.close();
+  }
 }
 
 function cancelled(reason?: unknown): AwslError {
@@ -595,18 +753,49 @@ export class CodexAdapter implements ProviderAdapter {
 
     const protocol = new CodexProtocol();
     let protocolFailure: AwslError | undefined;
+    let failureStderr: string | undefined;
     let schema: PreparedProviderJsonSchema | undefined;
     let schemaArtifact:
       | Awaited<ReturnType<typeof createPrivateJsonFile>>
       | undefined;
+    let resultArtifact:
+      | Awaited<ReturnType<typeof createPrivateJsonFile>>
+      | undefined;
+    let processSchema: PreparedProviderJsonSchema | undefined;
 
     if (request.schema !== undefined) {
       const preparedSchema = prepareCodexJsonSchema(request.schema, {
         label: "structured output schema",
       });
       schema = preparedSchema;
+      const basePrompt = providerPrompt(request, agent);
       try {
-        schemaArtifact = await createPrivateJsonFile(preparedSchema.packet, {
+        if (
+          Buffer.byteLength(basePrompt, "utf8") >=
+          CODEX_FILE_RESULT_PROMPT_BYTES
+        ) {
+          resultArtifact = await createPrivateJsonFile("null", {
+            basename: "result.json",
+            prefix: "awsl-codex-result-",
+          });
+          processSchema = prepareCodexJsonSchema(
+            {
+              additionalProperties: false,
+              properties: {
+                result_path: {
+                  enum: [resultArtifact.path],
+                  type: "string",
+                },
+              },
+              required: ["result_path"],
+              type: "object",
+            },
+            { label: "structured result reference schema" },
+          );
+        } else {
+          processSchema = preparedSchema;
+        }
+        schemaArtifact = await createPrivateJsonFile(processSchema.packet, {
           basename: "schema.json",
           prefix: "awsl-codex-schema-",
         });
@@ -638,8 +827,17 @@ export class CodexAdapter implements ProviderAdapter {
         ),
         cwd: request.cwd,
         executable: this.identity.executableRealpath,
-        prompt: providerPrompt(request, agent),
+        prompt: providerPrompt(
+          request,
+          agent,
+          resultArtifact === undefined || schema === undefined
+            ? undefined
+            : { path: resultArtifact.path, schemaPacket: schema.packet },
+        ),
         signal: request.signal,
+        onFailureStderr: (stderrTail) => {
+          failureStderr = stderrTail.toString("utf8");
+        },
         onEvent: async (event) => {
           try {
             protocol.consume(event);
@@ -653,23 +851,34 @@ export class CodexAdapter implements ProviderAdapter {
           await request.onRawEvent?.(event);
         },
       });
-      return protocol.finish(request, schema);
+      const fileResult =
+        resultArtifact === undefined
+          ? undefined
+          : {
+              packet: await readStructuredResultFile(resultArtifact.path),
+              path: resultArtifact.path,
+            };
+      return protocol.finish(request, schema, fileResult);
     } catch (error) {
       if (error instanceof AwslError && error.code === "CANCELLED") throw error;
+      const recoverable =
+        protocolFailure === undefined &&
+        protocol.retryableTransportFailure(error, failureStderr);
       return {
         kind: "error",
         error:
           (error instanceof AwslError && error.code === "PERSISTENCE_ERROR"
             ? error
             : protocolFailure) ??
-          providerError("Codex process transport failed", error),
-        usage: protocol.usage,
+          providerError("Codex process transport failed", error, recoverable),
+        usage: recoverable ? RETRYABLE_ZERO_USAGE : protocol.usage,
         ...(protocol.observation === undefined
           ? {}
           : { observation: protocol.observation }),
       };
     } finally {
       await schemaArtifact?.dispose();
+      await resultArtifact?.dispose();
     }
   }
 }
