@@ -1,6 +1,6 @@
 {
   "name": "@xhinliang/awsl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Codex-verified, Claude-compatible durable local runtime for Claude Code Workflow JS, with resume, checkpoints, budgets, and Git worktrees",
   "keywords": [
     "agentic-workflows",
