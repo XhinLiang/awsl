@@ -211,6 +211,14 @@ describe("CLI workflow execution", () => {
       runId: expect.stringMatching(/^wf-/),
       status: "completed",
       result: { value: 7 },
+      timing: {
+        version: 1,
+        status: "completed",
+        elapsedMs: expect.any(Number),
+        activeMs: expect.any(Number),
+        idleMs: expect.any(Number),
+        attempts: [expect.objectContaining({ attemptSeq: 0 })],
+      },
     });
     expect(cli.output().stderr).toBe("");
     expect(await readFile(log, "utf8")).toBe("version\n");

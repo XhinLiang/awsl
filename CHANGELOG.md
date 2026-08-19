@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Add versioned run timing summaries to JSON terminal envelopes and `awsl runs
+  show`, including attempts, resume idle time, phase parallelism, and per-call
+  queue/execution/retry durations derived from durable lifecycle events.
+
 - Publish `awsl-workflow@1` as an implementation-backed portable workflow ABI
   proposal, with explicit source, runtime, failure, replay, and non-goal
   boundaries.
@@ -28,6 +32,10 @@ All notable changes to this project will be documented in this file.
 - Position awsl as the Agent Workflow State Layer: a Codex-verified, durable
   local runtime for compatible Claude Code Workflows, while keeping
   authenticated Claude acceptance as an explicit evidence gap.
+
+### Security
+
+- Pin the patched transitive `nanoid@3.3.18` used by the development toolchain.
 
 ## 0.2.0 - 2026-08-06
 

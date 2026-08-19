@@ -33,6 +33,7 @@ import { canonicalJson } from "../core/canonical-json.js";
 import { AwslError, type AwslErrorCode } from "../core/errors.js";
 import { createEvent } from "../core/events.js";
 import { strictJsonClone } from "../core/strict-json.js";
+import { type RunTiming, summarizeRunTiming } from "../core/timing.js";
 import type {
   ProviderAdapter,
   ProviderId,
@@ -532,6 +533,7 @@ async function executeWorkflowRun(options: {
       result: result.result,
       budget: result.budget,
       metrics: result.metrics,
+      timing: summarizeRunTiming(await options.store.loadEvents()),
     });
     return 0;
   } catch (error) {
@@ -568,6 +570,7 @@ async function durableTerminalEnvelope(
       readonly result?: unknown;
       readonly budget: unknown;
       readonly metrics: unknown;
+      readonly timing: RunTiming | null;
       readonly error?: { readonly code: AwslErrorCode };
     }
   | undefined
@@ -600,6 +603,7 @@ async function durableTerminalEnvelope(
       ...(result.result === undefined ? {} : { result: result.result }),
       budget: result.budget,
       metrics: result.metrics,
+      timing: summarizeRunTiming(await store.loadEvents()),
       ...(result.error === undefined
         ? {}
         : { error: { code: result.error.code } }),
@@ -824,11 +828,13 @@ async function runsShowCommand(
           rawResult,
           located.reconciliation.snapshot,
         );
+  const timing = summarizeRunTiming(await located.store.loadEvents());
   await writeValue(
     context,
     {
       run: located.reconciliation.snapshot,
       result: result ?? null,
+      timing,
       active: located.reconciliation.active,
       atLeastOnce: located.reconciliation.atLeastOnce,
     },
@@ -1206,6 +1212,7 @@ Arguments:
 
 Output:
   auto uses pretty on a TTY and jsonl otherwise. json emits one terminal envelope.
+  The JSON terminal envelope includes versioned timing, phase, and call statistics.
   A run uses one provider for the complete workflow tree and never falls back.
 
 Examples:
@@ -1263,8 +1270,9 @@ attempt number, and whether interrupted work may execute at least once.`,
   ).addHelpText(
     "after",
     `
-Shows the durable run snapshot, terminal result when present, active ownership,
-and at-least-once warning state for the current project.`,
+Shows the durable run snapshot, terminal result when present, timing/phase/call
+statistics derived from stored events, active ownership, and at-least-once
+warning state for the current project.`,
   );
   runsShow.action(async (runId: string, options: FormatCommandOptions) => {
     setExitCode(await runsShowCommand(runId, options, context));

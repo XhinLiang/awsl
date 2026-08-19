@@ -193,7 +193,23 @@ Output contracts:
 - `auto` selects `pretty` for a TTY and `jsonl` otherwise.
 - `pretty` writes progress to stderr and the final business result to stdout.
 - `jsonl` writes only versioned events to stdout.
-- `json` writes one terminal envelope to stdout.
+- `json` writes one terminal envelope. In addition to the business result,
+  budget, and aggregate token metrics, completed invocations include a
+  versioned `timing` summary.
+
+`timing` is derived from the durable lifecycle events, so `awsl runs show
+<run-id>` can report it for runs created by earlier awsl versions too. It
+contains:
+
+- lifecycle `elapsedMs`, attempt-active `activeMs`, time between attempts as
+  `idleMs`, and the union of live agent intervals as `callActiveMs`;
+- each attempt and call, including queue, execution, retry, and elapsed time;
+- per-attempt phase rollups with elapsed and active time, cumulative call time,
+  maximum parallelism, the longest call, and the last finishing call.
+
+Phase elapsed times can overlap when workflows run phases concurrently and
+cumulative `callMs` can exceed wall-clock time. Reused calls have elapsed time
+but no live `durationMs`.
 - `SIGINT` exits 130 and `SIGTERM` exits 143 after a durable terminal record.
 
 `doctor` probes Node, Git, Codex, and Claude versions without invoking a model.

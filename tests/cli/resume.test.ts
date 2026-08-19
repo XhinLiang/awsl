@@ -238,6 +238,13 @@ describe("CLI durable resume", () => {
       status: "completed",
       result: { value: 2 },
       budget: { total: 20, spent: 0 },
+      timing: {
+        status: "completed",
+        attempts: [
+          expect.objectContaining({ attemptSeq: 0 }),
+          expect.objectContaining({ attemptSeq: 1 }),
+        ],
+      },
     });
 
     const listed = cliContext(cwd, env);
@@ -269,6 +276,13 @@ describe("CLI durable resume", () => {
       result: {
         status: "completed",
         result: { value: 2 },
+      },
+      timing: {
+        status: "completed",
+        attempts: [
+          expect.objectContaining({ attemptSeq: 0 }),
+          expect.objectContaining({ attemptSeq: 1 }),
+        ],
       },
     });
 

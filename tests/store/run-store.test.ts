@@ -83,6 +83,45 @@ async function boundAttempt(store: FileRunStore, attempt = baseAttempt) {
 }
 
 describe("FileRunStore", () => {
+  test("loads valid events and ignores only an incomplete final fragment", async () => {
+    const store = await opened();
+    const first = {
+      version: 1 as const,
+      type: "run.started",
+      runId: "run-1",
+      data: { attemptSeq: 0 },
+      timestamp: "2026-08-18T00:00:00.000Z",
+    };
+    const second = {
+      version: 1 as const,
+      type: "run.completed",
+      runId: "run-1",
+      data: { status: "completed" },
+      timestamp: "2026-08-18T00:00:01.000Z",
+    };
+    await store.appendEvent(first);
+    await store.appendEvent(second);
+    await expect(store.loadEvents()).resolves.toEqual([first, second]);
+
+    const valid = await readFile(store.paths.events);
+    await writeFile(
+      store.paths.events,
+      Buffer.concat([valid, Buffer.from('{"version":1')]),
+      { mode: 0o600 },
+    );
+    await expect(store.loadEvents()).resolves.toEqual([first, second]);
+
+    await writeFile(
+      store.paths.events,
+      Buffer.concat([valid, Buffer.from("{}\n")]),
+      { mode: 0o600 },
+    );
+    await expect(store.loadEvents()).rejects.toMatchObject({
+      code: "PERSISTENCE_ERROR",
+      message: "invalid run event",
+    });
+  });
+
   test("bounds stream lines before adding their delimiter", () => {
     expect(boundedStreamLine("12345678", 8)).toEqual(Buffer.from("12345678\n"));
     expect(() => boundedStreamLine("123456789", 8)).toThrow(
