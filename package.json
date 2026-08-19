@@ -26,6 +26,11 @@
   },
   "type": "module",
   "packageManager": "pnpm@9.15.4",
+  "pnpm": {
+    "overrides": {
+      "nanoid": "3.3.18"
+    }
+  },
   "engines": {
     "node": ">=22"
   },
