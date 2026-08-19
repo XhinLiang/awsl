@@ -31,12 +31,22 @@ export type {
   WorktreeRetainedEvent,
 } from "./runtime/worktree.js";
 export { AWSL_EVENT_VERSION, createEvent } from "./core/events.js";
+export { summarizeRunTiming } from "./core/timing.js";
 export type {
   AwslErrorCode,
   AwslErrorJSON,
   AwslErrorOptions,
 } from "./core/errors.js";
 export type { AwslEvent } from "./core/events.js";
+export type {
+  AttemptTiming,
+  CallTiming,
+  CallTimingStatus,
+  PhaseCallTiming,
+  PhaseTiming,
+  RunTiming,
+  RunTimingStatus,
+} from "./core/timing.js";
 export type {
   AgentEffort,
   AgentOptions,

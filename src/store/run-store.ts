@@ -105,6 +105,66 @@ const noExist = (error: unknown): boolean =>
   (error as NodeJS.ErrnoException).code === "ENOENT" ||
   ((error as { cause?: unknown }).cause !== undefined &&
     noExist((error as { cause: unknown }).cause));
+function parseEventLine(line: string, expectedRunId: string): AwslEvent {
+  try {
+    const value = strictJsonClone(
+      parseUniqueJson(line),
+      "run event",
+    ) as unknown;
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+      throw new TypeError();
+    const event = value as Record<string, unknown>;
+    const timestamp =
+      typeof event.timestamp === "string"
+        ? Date.parse(event.timestamp)
+        : Number.NaN;
+    if (
+      Object.keys(event).length !== 5 ||
+      !["version", "type", "timestamp", "runId", "data"].every((key) =>
+        Object.hasOwn(event, key),
+      ) ||
+      event.version !== 1 ||
+      typeof event.type !== "string" ||
+      !event.type ||
+      event.runId !== expectedRunId ||
+      !Number.isFinite(timestamp) ||
+      new Date(timestamp).toISOString() !== event.timestamp
+    )
+      throw new TypeError();
+    canonicalJson(event.data);
+    return Object.freeze(event as unknown as AwslEvent);
+  } catch (error) {
+    throw fail("invalid run event", error);
+  }
+}
+
+function parseEventStream(
+  content: Buffer,
+  expectedRunId: string,
+): readonly AwslEvent[] {
+  let source: string;
+  try {
+    source = fatalUtf8.decode(content);
+  } catch (error) {
+    throw fail("invalid run event stream", error);
+  }
+  if (!source) return Object.freeze([]);
+  const terminated = source.endsWith("\n");
+  const lines = source.split("\n");
+  if (terminated) lines.pop();
+  const events: AwslEvent[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (Buffer.byteLength(line, "utf8") > MAX_STREAM_LINE_BYTES)
+      throw fail("state stream line exceeds the byte limit");
+    try {
+      events.push(parseEventLine(line, expectedRunId));
+    } catch (error) {
+      if (!terminated && index === lines.length - 1) break;
+      throw error;
+    }
+  }
+  return Object.freeze(events);
+}
 function validatedLockOwner(
   owner: LockOwner,
   now: () => Date,
@@ -823,6 +883,17 @@ export class FileRunStore {
       this.#runId,
     );
     return loaded.records;
+  }
+  async loadEvents(): Promise<readonly AwslEvent[]> {
+    try {
+      return parseEventStream(
+        await this.#readVerified(this.paths.events),
+        this.#runId,
+      );
+    } catch (error) {
+      if (noExist(error)) return Object.freeze([]);
+      throw error;
+    }
   }
   async readRun(): Promise<RunSnapshot> {
     return (await this.#readJsonSnapshot(
