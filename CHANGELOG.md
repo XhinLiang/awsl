@@ -29,6 +29,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Route the default Codex `fast` tier to `gpt-5.6-luna` at low reasoning
+  effort, while preserving the existing Claude Haiku, Codex balanced, and
+  Codex strong mappings.
+
 - Position awsl as the Agent Workflow State Layer: a Codex-verified, durable
   local runtime for compatible Claude Code Workflows, while keeping
   authenticated Claude acceptance as an explicit evidence gap.

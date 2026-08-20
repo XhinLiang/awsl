@@ -7,7 +7,7 @@ import {
 
 describe("resolveModel", () => {
   test.each([
-    ["codex", "haiku", "gpt-5.6-terra", "low", "tier:fast"],
+    ["codex", "haiku", "gpt-5.6-luna", "low", "tier:fast"],
     ["codex", "sonnet", "gpt-5.6-terra", "medium", "tier:balanced"],
     ["codex", "opus", "gpt-5.6-sol", "xhigh", "tier:strong"],
     ["claude", "haiku", "haiku", "low", "native"],
@@ -82,7 +82,7 @@ describe("resolveModel", () => {
         effectiveRequestedModel: "haiku",
         effort: "max",
         effortSource: "workflow",
-        model: "gpt-5.6-terra",
+        model: "gpt-5.6-luna",
         modelSource: "tier:fast",
         requestSource: "agent",
       },

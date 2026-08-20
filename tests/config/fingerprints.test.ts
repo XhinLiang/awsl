@@ -224,7 +224,7 @@ describe("awsl behavior fingerprint", () => {
 describe("selected provider model-map fingerprint", () => {
   test("locks the selected map, aliases, and builtin defaults to a golden", () => {
     expect(modelMapFingerprint(config())).toBe(
-      "sha256:d4f022a63a2f509f232a8450fa20cb726e18d1e85098c5709f4da6d0d3ce006b",
+      "sha256:9be94d304f683dc6a4e53ae613d400bd6d4c7f31e41609d540b15466d97616dd",
     );
   });
 
