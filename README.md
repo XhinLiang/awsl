@@ -298,7 +298,7 @@ args = []
 profile = "default"
 
 [providers.codex.tiers.fast]
-model = "gpt-5.6-terra"
+model = "gpt-5.6-luna"
 effort = "low"
 
 [registry]

@@ -59,7 +59,7 @@ export const DEFAULT_CONFIG: ResolvedAwslConfig = Object.freeze({
       nativeModels: Object.freeze([]),
       models: Object.freeze({}),
       tiers: Object.freeze({
-        fast: Object.freeze({ model: "gpt-5.6-terra", effort: "low" }),
+        fast: Object.freeze({ model: "gpt-5.6-luna", effort: "low" }),
         balanced: Object.freeze({ model: "gpt-5.6-terra", effort: "medium" }),
         strong: Object.freeze({ model: "gpt-5.6-sol", effort: "xhigh" }),
       }),
