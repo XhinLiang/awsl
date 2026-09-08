@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.3.2 - 2026-09-08
 
 - Add `--codex-sandbox` to `run` and `resume`, and the Codex-only
   `providers.codex.sandbox_mode` setting. Explicit run permissions reach native
