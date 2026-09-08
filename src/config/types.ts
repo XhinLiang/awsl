@@ -19,6 +19,7 @@ interface BaseProviderConfig {
 export interface CodexProviderConfig extends BaseProviderConfig {
   id: "codex";
   profile?: string;
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
 }
 export interface ClaudeProviderConfig extends BaseProviderConfig {
   id: "claude";

@@ -706,6 +706,7 @@ export interface CodexAdapterOptions {
   identity: ProviderIdentity;
   configuredArgs?: readonly string[];
   profile?: string;
+  sandboxMode?: NegotiatedAgentPolicy["sandboxMode"];
   processRunner?: CodexProcessRunner;
 }
 
@@ -716,15 +717,30 @@ export class CodexAdapter implements ProviderAdapter {
   readonly #processRunner: CodexProcessRunner;
   readonly #configuredArgs: readonly string[];
   readonly #profile?: string;
+  readonly #sandboxMode?: NegotiatedAgentPolicy["sandboxMode"];
 
   constructor(options: CodexAdapterOptions) {
     const snapshot = snapshotAdapterOptions(options, "codex", [
       "identity",
       "configuredArgs",
       "profile",
+      "sandboxMode",
       "processRunner",
     ]);
     this.identity = snapshotProviderIdentity(snapshot.identity, "codex");
+    if (
+      snapshot.sandboxMode !== undefined &&
+      !CODEX_SANDBOX_MODES.has(
+        snapshot.sandboxMode as NonNullable<
+          NegotiatedAgentPolicy["sandboxMode"]
+        >,
+      )
+    )
+      throw new AwslError("CONFIG_ERROR", "invalid Codex run sandbox mode", {
+        recoverable: false,
+      });
+    this.#sandboxMode =
+      snapshot.sandboxMode as NegotiatedAgentPolicy["sandboxMode"];
     this.#configuredArgs = validateProviderArgs(
       "codex",
       (snapshot.configuredArgs ?? []) as readonly string[],
@@ -821,7 +837,7 @@ export class CodexAdapter implements ProviderAdapter {
             profile: this.#profile,
             effort: request.effort,
             model: request.model,
-            sandboxMode: agent?.sandboxMode,
+            sandboxMode: this.#sandboxMode ?? agent?.sandboxMode,
           },
           schemaArtifact?.path,
         ),

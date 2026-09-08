@@ -175,7 +175,9 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
   exactKeys(
     input,
     BASE_PROVIDER_KEYS,
-    id === "codex" ? ["defaultModel", "profile"] : ["defaultModel"],
+    id === "codex"
+      ? ["defaultModel", "profile", "sandboxMode"]
+      : ["defaultModel"],
     label,
   );
   if (input.id !== id) configError(`${label} id is invalid`);
@@ -206,6 +208,14 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
       configError(`${label} has a non-native target`);
 
   if (id === "codex") {
+    const sandboxMode = input.sandboxMode as CodexProviderConfig["sandboxMode"];
+    if (
+      Object.hasOwn(input, "sandboxMode") &&
+      !["read-only", "workspace-write", "danger-full-access"].includes(
+        sandboxMode as string,
+      )
+    )
+      configError(`${label} sandboxMode is invalid`);
     let profile: string | undefined;
     if (Object.hasOwn(input, "profile")) {
       try {
@@ -223,6 +233,7 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
       models,
       ...(defaultModel === undefined ? {} : { defaultModel }),
       ...(profile === undefined ? {} : { profile }),
+      ...(sandboxMode === undefined ? {} : { sandboxMode }),
     });
   }
   return Object.freeze({

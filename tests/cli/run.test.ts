@@ -184,6 +184,63 @@ describe("CLI output modes", () => {
 });
 
 describe("CLI workflow execution", () => {
+  test("passes a run-scoped sandbox and rejects permission drift on resume", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-sandbox-")));
+    const capture = join(cwd, "capture.jsonl");
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_CODEX_COMMAND: fakeCodex,
+      AWSL_FAKE_CODEX_CAPTURE: capture,
+      CODEX_HOME: join(cwd, "codex-home"),
+    };
+    const cli = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--provider",
+          "codex",
+          "--codex-sandbox",
+          "danger-full-access",
+          "--args",
+          '{"prompt":"hello"}',
+          "--format",
+          "json",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
+    const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
+    expect(invocation.argv).toContain("--sandbox");
+    expect(invocation.argv).toContain("danger-full-access");
+    const runId = JSON.parse(cli.output().stdout).runId;
+    const resume = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        ["resume", runId, "--codex-sandbox", "read-only", "--format", "json"],
+        resume.context,
+      ),
+    ).not.toBe(0);
+    expect((await readFile(capture, "utf8")).trim().split("\n")).toHaveLength(
+      1,
+    );
+    const same = cliContext(cwd, env);
+    const code = await executeCli(
+      [
+        "resume",
+        runId,
+        "--codex-sandbox",
+        "danger-full-access",
+        "--format",
+        "json",
+      ],
+      same.context,
+    );
+    expect(code, same.output().stderr).toBe(0);
+  });
+
   test("supports the leading workflow form with JSON args and durable JSON output", async () => {
     const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-cli-run-")));
     const log = join(cwd, "codex.log");

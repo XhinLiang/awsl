@@ -306,7 +306,22 @@ plugin_dirs = []
 ```
 
 Provider tables accept `executable`, `args`, `default_model`,
-`native_models`, `tiers`, and `models`; `profile` is Codex-only.
+`native_models`, `tiers`, and `models`; `profile` and `sandbox_mode` are Codex-only.
+
+For an explicitly authorized run, select Codex permissions without changing the
+user's native configuration:
+
+```bash
+awsl run review.js --provider codex --codex-sandbox read-only
+awsl resume <run-id> --codex-sandbox read-only
+```
+
+Values are `read-only`, `workspace-write`, and `danger-full-access`, with native
+Codex semantics. `danger-full-access` disables the native sandbox for this run;
+use it only in an already isolated, trusted environment. The explicit selection
+overrides a named agent's sandbox setting. Omitting the option preserves existing
+behavior. Resume must resolve the same selection; changing or omitting an
+original CLI-only selection fails before execution. No native config is written.
 `awsl config show` reports merged values, field provenance, and hashed config
 sources, with defensive redaction.
 

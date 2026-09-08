@@ -24,6 +24,7 @@ export type ResolvedArgsInput =
   | { readonly present: true; readonly value: unknown };
 
 export interface ParsedResume {
+  readonly codexSandbox?: string;
   readonly runId: string;
   readonly argsPresent: boolean;
   readonly args?: unknown;
@@ -101,6 +102,7 @@ export function parseResume(argv: readonly string[]): ParsedResume {
   let argsFile: string | undefined;
   let budget: number | undefined;
   let format: OutputFormat | undefined;
+  let codexSandbox: string | undefined;
   const seen = new Set<string>();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] as string;
@@ -112,7 +114,15 @@ export function parseResume(argv: readonly string[]): ParsedResume {
       (candidate) => option === candidate,
     );
     if (pinned !== undefined) usage(`${pinned.slice(2)} is pinned for resume`);
-    if (!["--args", "--args-file", "--budget", "--format"].includes(option))
+    if (
+      ![
+        "--args",
+        "--args-file",
+        "--budget",
+        "--format",
+        "--codex-sandbox",
+      ].includes(option)
+    )
       usage("unknown resume option");
     if (seen.has(option)) usage(`${option} may be supplied only once`);
     seen.add(option);
@@ -123,7 +133,13 @@ export function parseResume(argv: readonly string[]): ParsedResume {
     if (option === "--args") argsText = value;
     else if (option === "--args-file") argsFile = value;
     else if (option === "--budget") budget = parseBudget(value);
-    else format = parseOutputFormat(value);
+    else if (option === "--codex-sandbox") {
+      if (
+        !["read-only", "workspace-write", "danger-full-access"].includes(value)
+      )
+        usage("invalid Codex sandbox mode");
+      codexSandbox = value;
+    } else format = parseOutputFormat(value);
   }
   if (argsText !== undefined && argsFile !== undefined)
     usage("workflow argument sources are mutually exclusive");
@@ -134,6 +150,7 @@ export function parseResume(argv: readonly string[]): ParsedResume {
     ...(argsFile === undefined ? {} : { argsFile }),
     ...(budget === undefined ? {} : { budget }),
     ...(format === undefined ? {} : { format }),
+    ...(codexSandbox === undefined ? {} : { codexSandbox }),
   });
 }
 

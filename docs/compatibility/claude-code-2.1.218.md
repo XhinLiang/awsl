@@ -17,6 +17,12 @@
 
 **Overall status:** `partial`
 
+Run-scoped Codex sandbox selection is an awsl CLI/config extension, not a Claude
+Workflow ABI feature. Protocol fixtures cover forwarding permissions for unnamed
+agents, rejecting invalid provider settings, and resume fingerprint drift.
+Claude does not accept this option. Native sandbox enforcement remains Codex's
+responsibility; fixture success alone is not evidence of real network access.
+
 awsl implements the observable JavaScript workflow behaviors listed below and
 normalizes structurally compatible files to its own ABI. This report does not
 claim byte-for-byte equivalence, provider-protocol compatibility without the

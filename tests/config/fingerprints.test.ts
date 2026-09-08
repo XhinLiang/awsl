@@ -70,6 +70,16 @@ function configError(error: unknown): boolean {
 }
 
 describe("awsl behavior fingerprint", () => {
+  test("pins explicit sandbox permissions without changing the default fingerprint", () => {
+    const ordinary = config();
+    const allowed = config();
+    allowed.providers.codex.sandboxMode = "danger-full-access";
+    expect(behavior(allowed)).not.toBe(behavior(ordinary));
+    const restricted = config();
+    restricted.providers.codex.sandboxMode = "read-only";
+    expect(behavior(restricted)).not.toBe(behavior(allowed));
+  });
+
   test("is a deterministic lowercase SHA-256 independent of object insertion order", () => {
     const first = config();
     const second = config();
