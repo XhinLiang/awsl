@@ -92,6 +92,18 @@ function deepFreezeJson(value: unknown): void {
 }
 
 describe("Codex adapter contract", () => {
+  test("applies an explicit run sandbox without requiring a named agent", async () => {
+    const runner = fakeRunner(successEvents);
+    const adapter = new CodexAdapter({
+      identity,
+      sandboxMode: "workspace-write",
+      processRunner: runner.run,
+    });
+    await adapter.run(request());
+    expect(runner.calls[0].argv).toContain("--sandbox");
+    expect(runner.calls[0].argv).toContain("workspace-write");
+  });
+
   test("places global options before exec and the prompt marker last", () => {
     expect(
       buildCodexArgv({

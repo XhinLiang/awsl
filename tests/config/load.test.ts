@@ -14,6 +14,33 @@ async function rejectedError(promise: Promise<unknown>): Promise<Error> {
 }
 
 describe("loadConfig", () => {
+  test("resolves explicit Codex sandbox permission with CLI provenance", async () => {
+    const loaded = await loadConfig({
+      cwd: process.cwd(),
+      userConfig: {},
+      projectConfig: {},
+      cli: { providers: { codex: { sandbox_mode: "danger-full-access" } } },
+    });
+    expect(loaded.value.providers.codex.sandboxMode).toBe("danger-full-access");
+    expect(loaded.provenance["/providers/codex/sandboxMode"].layer).toBe("cli");
+    await expect(
+      loadConfig({
+        cwd: process.cwd(),
+        userConfig: {},
+        projectConfig: {},
+        cli: { providers: { codex: { sandbox_mode: "unrestricted" } } },
+      }),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+    await expect(
+      loadConfig({
+        cwd: process.cwd(),
+        userConfig: {},
+        projectConfig: {},
+        cli: { providers: { claude: { sandbox_mode: "read-only" } } },
+      }),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+  });
+
   test("validates each layer, performs leaf merge, and tracks RFC6901 provenance", async () => {
     const loaded = await loadConfig({
       cwd: process.cwd(),

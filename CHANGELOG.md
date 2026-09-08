@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.2 - 2026-09-08
+
+- Add `--codex-sandbox` to `run` and `resume`, and the Codex-only
+  `providers.codex.sandbox_mode` setting. Explicit run permissions reach native
+  Codex even when workflows use unnamed agents. Existing defaults are unchanged.
+- Include sandbox selection in the behavior fingerprint; resume requires the
+  original effective permissions and rejects drift before launching a provider.
+
 ## 0.3.1 - 2026-08-20
 
 ### Changed

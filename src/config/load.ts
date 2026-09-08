@@ -263,6 +263,7 @@ function validateProvider(
           "tiers",
           "models",
           "profile",
+          "sandbox_mode",
         ]
       : [
           "executable",
@@ -275,6 +276,19 @@ function validateProvider(
   );
   for (const key of ["executable", "default_model", "profile"] as const)
     if (key in input) string(layer, source, pointer(path, key), input[key]);
+  if (
+    "sandbox_mode" in input &&
+    !["read-only", "workspace-write", "danger-full-access"].includes(
+      input.sandbox_mode as string,
+    )
+  )
+    failure(
+      layer,
+      source,
+      pointer(path, "sandbox_mode"),
+      "read-only, workspace-write, or danger-full-access",
+      input.sandbox_mode,
+    );
   if ("executable" in input && !isExecutable(input.executable as string))
     failure(
       layer,

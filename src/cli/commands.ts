@@ -147,6 +147,7 @@ interface NormalizedContext {
 }
 
 interface RunCommandOptions {
+  readonly codexSandbox?: string;
   readonly provider?: string;
   readonly args?: string;
   readonly argsFile?: string;
@@ -156,6 +157,7 @@ interface RunCommandOptions {
 }
 
 interface ResumeCommandOptions {
+  readonly codexSandbox?: string;
   readonly args?: string;
   readonly argsFile?: string;
   readonly budget?: string;
@@ -359,6 +361,9 @@ function adapter(
     ? new CodexAdapter({
         identity,
         configuredArgs: selected.args,
+        ...(config.providers.codex.sandboxMode === undefined
+          ? {}
+          : { sandboxMode: config.providers.codex.sandboxMode }),
         ...(config.providers.codex.profile === undefined
           ? {}
           : { profile: config.providers.codex.profile }),
@@ -396,15 +401,27 @@ async function prepareRuntime(options: {
   readonly cwd: string;
   readonly workflow: string;
   readonly providerOverride?: ProviderId;
+  readonly codexSandbox?: string;
 }): Promise<PreparedRuntime> {
   const canonical = await canonicalCwd(options.cwd);
   const loaded = await loadConfig({
     cwd: canonical,
     env: options.context.env,
-    ...(options.providerOverride === undefined
-      ? {}
-      : { cli: { provider: options.providerOverride } }),
+    cli: {
+      ...(options.providerOverride === undefined
+        ? {}
+        : { provider: options.providerOverride }),
+      ...(options.codexSandbox === undefined
+        ? {}
+        : { providers: { codex: { sandbox_mode: options.codexSandbox } } }),
+    },
   });
+  if (options.codexSandbox !== undefined && loaded.value.provider !== "codex")
+    throw new AwslError(
+      "CONFIG_ERROR",
+      "--codex-sandbox requires the Codex provider",
+      { recoverable: false },
+    );
   const root = await resolveRootWorkflow(options.workflow, canonical);
   const projectRoot = await resolveProjectRoot(canonical);
   const registry = await createRegistry({
@@ -635,6 +652,7 @@ async function runCommand(
     cwd: canonical,
     workflow,
     providerOverride: provider(rawOptions.provider),
+    codexSandbox: rawOptions.codexSandbox,
   });
   const state = await ensureProjectState(runtime.loaded.value.stateDir, {
     projectRoot: runtime.projectRoot,
@@ -747,6 +765,7 @@ async function resumeCommand(
     context,
     cwd: stored.canonicalCwd,
     workflow: stored.root.reference,
+    codexSandbox: rawOptions.codexSandbox,
   });
   const records = await located.store.loadJournal();
   const store = await FileRunStore.openExisting({
@@ -1201,6 +1220,10 @@ Examples:
       .option("--provider <provider>", "codex or claude")
       .option("--args <json>", "workflow arguments")
       .option("--args-file <path>", "workflow arguments file or -")
+      .option(
+        "--codex-sandbox <mode>",
+        "explicit Codex run sandbox: read-only, workspace-write, or danger-full-access",
+      )
       .option("--cwd <path>", "session working directory")
       .option("--budget <tokens>", "output token budget"),
   ).addHelpText(
@@ -1230,6 +1253,10 @@ Examples:
       .argument("<run-id>")
       .option("--args <json>", "replacement workflow arguments")
       .option("--args-file <path>", "replacement arguments file or -")
+      .option(
+        "--codex-sandbox <mode>",
+        "Codex sandbox; must match the original run",
+      )
       .option("--budget <tokens>", "replacement output token budget"),
   ).addHelpText(
     "after",
