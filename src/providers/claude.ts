@@ -396,10 +396,10 @@ class ClaudeStreamState {
   }
 
   private parseSystem(event: Record<string, unknown>): void {
-    if (event.subtype !== "init") {
-      this.fail("unsupported system subtype");
-      return;
-    }
+    // Newer CLI versions emit informational system subtypes (hook_started,
+    // hook_response, thinking_tokens, ...). Only init carries adapter state;
+    // ignore the rest instead of failing the stream.
+    if (event.subtype !== "init") return;
     if (this.initializationSeen) {
       this.fail("duplicate system init event");
       return;
