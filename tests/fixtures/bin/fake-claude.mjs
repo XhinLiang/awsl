@@ -242,7 +242,47 @@ switch (fixture) {
     emit(assistant());
     break;
   case "system-non-init":
-    emit({ type: "system", subtype: "status", session_id: "session-1" });
+    emit({
+      type: "system",
+      subtype: "hook_started",
+      hook_event: "SessionStart",
+      hook_id: "hook-1",
+      hook_name: "superpowers",
+      session_id: "session-1",
+      uuid: "evt-1",
+    });
+    emit({
+      type: "system",
+      subtype: "hook_response",
+      hook_event: "SessionStart",
+      hook_id: "hook-1",
+      hook_name: "superpowers",
+      outcome: "ok",
+      exit_code: 0,
+      output: "",
+      stdout: "",
+      stderr: "",
+      session_id: "session-1",
+      uuid: "evt-2",
+    });
+    emit(init());
+    emit({
+      type: "system",
+      subtype: "thinking_tokens",
+      estimated_tokens: 1024,
+      estimated_tokens_delta: 1024,
+      session_id: "session-1",
+      uuid: "evt-3",
+    });
+    emit({
+      type: "system",
+      subtype: "thinking_tokens",
+      estimated_tokens: 2048,
+      estimated_tokens_delta: 1024,
+      session_id: "session-1",
+      uuid: "evt-4",
+    });
+    emit(assistant());
     emit(result());
     break;
   case "user-non-tool-result":

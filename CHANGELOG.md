@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.3 - 2026-09-11
+
+### Fixed
+
+- Ignore non-init Claude `system` stream subtypes (`hook_started`,
+  `hook_response`, `thinking_tokens`, ...) instead of failing the stream.
+  Claude CLI 2.1.268 emits these informational events, which made every
+  Claude-provider call fail with `unsupported system subtype`. Duplicate
+  `init` events still fail closed.
+
 ## 0.3.2 - 2026-09-08
 
 - Add `--codex-sandbox` to `run` and `resume`, and the Codex-only

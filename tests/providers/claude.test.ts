@@ -1039,7 +1039,6 @@ describe("Claude 2.1.218 stream protocol", () => {
     "unknown-event",
     "duplicate-terminal",
     "post-terminal",
-    "system-non-init",
     "user-non-tool-result",
   ])("fails closed for protocol fixture %s", async (fixture) => {
     await expect(adapter().run(request(fixture))).resolves.toMatchObject({
@@ -1047,6 +1046,19 @@ describe("Claude 2.1.218 stream protocol", () => {
       error: {
         code: "PROVIDER_ERROR",
         provider: "claude",
+      },
+    });
+  });
+
+  test("ignores non-init system subtypes emitted by newer CLI versions", async () => {
+    const outcome = await adapter().run(request("system-non-init"));
+
+    expect(outcome).toMatchObject({
+      kind: "completed",
+      result: { text: "ok" },
+      observation: {
+        sessionId: "session-1",
+        resolvedModel: "claude-resolved-2.1.218",
       },
     });
   });
