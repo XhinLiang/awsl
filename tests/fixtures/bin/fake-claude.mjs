@@ -227,6 +227,7 @@ switch (fixture) {
     emit(result());
     break;
   case "tool-trail":
+  case "user-mixed-content":
     emit(init());
     emit(
       assistant({
@@ -261,6 +262,9 @@ switch (fixture) {
       message: {
         role: "user",
         content: [
+          ...(fixture === "user-mixed-content"
+            ? [{ type: "text", text: "replayed context" }, { type: "image" }]
+            : []),
           {
             type: "tool_result",
             tool_use_id: "bash-1",
@@ -337,11 +341,21 @@ switch (fixture) {
     emit(result());
     break;
   case "user-non-tool-result":
+  case "user-string-content":
+  case "user-invalid-content":
     emit(init());
     emit({
       type: "user",
       session_id: "session-1",
-      message: { role: "user", content: [{ type: "text", text: "echo" }] },
+      message: {
+        role: "user",
+        content:
+          fixture === "user-string-content"
+            ? "echo"
+            : fixture === "user-invalid-content"
+              ? null
+              : [{ type: "text", text: "echo" }],
+      },
     });
     emit(result());
     break;

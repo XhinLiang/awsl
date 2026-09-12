@@ -17,6 +17,14 @@
 
 **Overall status:** `partial`
 
+The Claude user-event parser also accepts string context and content arrays
+containing text or other non-tool-result blocks. These blocks do not alter the
+assistant result; tool-result failures still populate the tool-use trail.
+`tests/providers/claude.test.ts` covers these cases with independently authored
+protocol fixtures and rejects malformed user message envelopes. This addresses
+reported user-context failures with CLI 2.1.268 and 2.1.269; it does not establish
+authenticated acceptance of either version or a full resumed workflow.
+
 Run-scoped Codex sandbox selection is an awsl CLI/config extension, not a Claude
 Workflow ABI feature. Protocol fixtures cover forwarding permissions for unnamed
 agents, rejecting invalid provider settings, and resume fingerprint drift.

@@ -47,7 +47,7 @@ import {
 } from "../providers/process.js";
 import { runWorkflow } from "../runtime/engine.js";
 import { installSkills } from "../skills/install.js";
-import { redactJson } from "../store/redact.js";
+import { redactJson, redactText } from "../store/redact.js";
 import { FileRunStore } from "../store/run-store.js";
 import type { LockOwner } from "../store/types.js";
 import {
@@ -282,7 +282,23 @@ async function writeDiagnostic(
       ? error
       : new AwslError("PERSISTENCE_ERROR", "command failed", {
           recoverable: false,
+          cause: error,
         });
+  if (normalized.code === "PERSISTENCE_ERROR") {
+    const seen = new Set<unknown>();
+    let current: unknown = normalized;
+    while (current !== undefined && current !== null && !seen.has(current)) {
+      seen.add(current);
+      const label = current instanceof AwslError ? `${current.code}: ` : "";
+      const message =
+        current instanceof Error ? current.message : String(current);
+      await context.writeStderr(
+        `${current === normalized ? "" : "Caused by: "}${label}${redactText(message)}\n`,
+      );
+      current = current instanceof Error ? current.cause : undefined;
+    }
+    return errorExitCode(normalized);
+  }
   await context.writeStderr(
     `${normalized.code}: ${diagnosticText[normalized.code]}\n`,
   );
