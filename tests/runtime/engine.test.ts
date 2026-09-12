@@ -614,6 +614,65 @@ describe("runtime engine", () => {
     ).toBe(false);
   });
 
+  test("persists a bounded tool-use trail on the completed call record", async () => {
+    const toolUses = [
+      {
+        tool: "command_execution",
+        input: "node dist/src/cli.js team --stage commit",
+        exitCode: 0,
+      },
+      { tool: "mcp:docs-fetch", input: '{"id":"doc-7"}' },
+    ];
+    const provider = new RecordingProvider(() => ({
+      kind: "completed",
+      result: { text: "done", toolUses },
+      usage: { outputTokens: 1, complete: true },
+    }));
+    const options = await harness("basic-agent.js", provider);
+    const run = await runWorkflow({
+      ...options,
+      runId: "tool-use-run",
+      attemptId: "attempt-0",
+      attemptSeq: 0,
+      args: { prompt: "hello" },
+      lockOwner,
+    });
+
+    expect(run.status).toBe("completed");
+    const completed = options.store.records.filter(
+      (record) => record.kind === "call" && record.state === "completed",
+    );
+    expect(completed).toHaveLength(1);
+    const payload = (
+      completed[0] as { completed?: { result?: { toolUses?: unknown } } }
+    ).completed;
+    expect(payload?.result).toMatchObject({ text: "done", toolUses });
+  });
+
+  test("fails closed on a malformed or oversized tool-use trail", async () => {
+    const oversized = Array.from({ length: 129 }, (_, index) => ({
+      tool: `tool-${index}`,
+    }));
+    for (const toolUses of [oversized, [{ tool: 123 }]]) {
+      const provider = new RecordingProvider(() => ({
+        kind: "completed",
+        result: { text: "done", toolUses },
+        usage: { outputTokens: 1, complete: true },
+      }));
+      const options = await harness("basic-agent.js", provider);
+      await expect(
+        runWorkflow({
+          ...options,
+          runId: "tool-use-invalid",
+          attemptId: "attempt-0",
+          attemptSeq: 0,
+          lockOwner,
+          args: { prompt: "hello" },
+        }),
+      ).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
+    }
+  });
+
   test("shares budget, counters, run identity, and a forced child phase", async () => {
     const provider = new RecordingProvider((request) => ({
       kind: "completed",

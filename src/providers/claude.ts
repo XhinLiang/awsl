@@ -4,6 +4,7 @@ import { AwslError } from "../core/errors.js";
 import { strictJsonClone } from "../core/strict-json.js";
 import type {
   AgentEffort,
+  AgentToolUse,
   NegotiatedAgentPolicy,
   ProviderAdapter,
   ProviderCapabilities,
@@ -13,6 +14,7 @@ import type {
   ProviderRequest,
   ProviderUsage,
 } from "../core/types.js";
+import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
 import {
   type ProviderProcessResult,
@@ -361,6 +363,8 @@ class ClaudeStreamState {
   private resolvedModel?: string;
   private structuredOutputAttempts = 0;
   private readonly observedUsage: UsageFields = {};
+  private readonly toolUses: AgentToolUse[] = [];
+  private readonly toolUseIndexById = new Map<string, number>();
 
   constructor(private readonly expectsStructuredOutput: boolean) {}
 
@@ -420,13 +424,29 @@ class ClaudeStreamState {
     }
     this.observeModel(message.model);
     addUsage(this.observedUsage, readUsage(message.usage));
-    if (!this.expectsStructuredOutput) return;
     for (const block of message.content) {
+      if (!isRecord(block)) continue;
+      // Tool-use trail: record every invocation the agent actually issued so
+      // the journal can prove (or refute) that an agent ran its commands.
       if (
-        isRecord(block) &&
         block.type === "tool_use" &&
-        block.name === "StructuredOutput"
+        typeof block.name === "string" &&
+        block.name.length > 0 &&
+        typeof block.id === "string"
       ) {
+        if (!this.toolUseIndexById.has(block.id)) {
+          const before = this.toolUses.length;
+          appendToolUse(this.toolUses, {
+            tool: block.name,
+            input: summarizeToolPayload(block.input),
+          });
+          if (this.toolUses.length > before) {
+            this.toolUseIndexById.set(block.id, before);
+          }
+        }
+      }
+      if (!this.expectsStructuredOutput) continue;
+      if (block.type === "tool_use" && block.name === "StructuredOutput") {
         this.structuredOutputAttempts += 1;
         if (
           this.structuredOutputAttempts >
@@ -463,6 +483,15 @@ class ClaudeStreamState {
       )
     ) {
       this.fail("only user tool-result events are supported");
+      return;
+    }
+    for (const block of message.content) {
+      if (block.is_error !== true) continue;
+      const index = this.toolUseIndexById.get(String(block.tool_use_id ?? ""));
+      const use = index === undefined ? undefined : this.toolUses[index];
+      if (use !== undefined && use.error === undefined) {
+        use.error = summarizeToolPayload(block.content);
+      }
     }
   }
 
@@ -669,6 +698,7 @@ class ClaudeStreamState {
           ? {}
           : { model: this.resolvedModel }),
         ...(request.effort === undefined ? {} : { effort: request.effort }),
+        ...(this.toolUses.length === 0 ? {} : { toolUses: [...this.toolUses] }),
       },
       usage,
       ...(observation === undefined ? {} : { observation }),

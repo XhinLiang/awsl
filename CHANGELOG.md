@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.4 - 2026-09-12
+
+### Added
+
+- Record a bounded tool-use trail on every completed agent call and persist it
+  in the run journal (`completed.result.toolUses`). Each entry carries the tool
+  name plus a byte-capped digest of its input (and, for Claude, an error digest
+  when the tool result was an error; for Codex `command_execution`, the exit
+  code). The trail is capped at 128 entries and 240 bytes per field, so
+  post-run forensics can prove whether an agent actually issued its commands
+  without bloating journals.
+
 ## 0.3.3 - 2026-09-11
 
 ### Fixed

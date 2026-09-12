@@ -226,6 +226,57 @@ switch (fixture) {
     });
     emit(result());
     break;
+  case "tool-trail":
+    emit(init());
+    emit(
+      assistant({
+        message: {
+          type: "message",
+          role: "assistant",
+          model: "claude-resolved-2.1.218",
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-1",
+              name: "Bash",
+              input: {
+                command: "node dist/src/cli.js team --stage commit",
+                description: "commit the collection",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "read-1",
+              name: "Read",
+              input: { file_path: `${"x".repeat(400)}.md` },
+            },
+          ],
+          usage: { input_tokens: 3, output_tokens: 2 },
+        },
+      }),
+    );
+    emit({
+      type: "user",
+      session_id: "session-1",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bash-1",
+            is_error: true,
+            content: "commit stage failed",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "read-1",
+            content: "file contents",
+          },
+        ],
+      },
+    });
+    emit(result());
+    break;
   case "unknown-event":
     emit(init());
     emit({ type: "future_event", session_id: "session-1" });

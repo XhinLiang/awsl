@@ -11,6 +11,7 @@ import { AwslError } from "../core/errors.js";
 import { strictJsonClone } from "../core/strict-json.js";
 import type {
   AgentEffort,
+  AgentToolUse,
   NegotiatedAgentPolicy,
   ProviderAdapter,
   ProviderCapabilities,
@@ -20,6 +21,7 @@ import type {
   ProviderRequest,
   ProviderUsage,
 } from "../core/types.js";
+import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
 import {
   type ProviderProcessResult,
@@ -354,6 +356,7 @@ class CodexProtocol {
   #turnStarted = false;
   #hasSubstantiveItem = false;
   #usage: ProviderUsage = { complete: false };
+  #toolUses: AgentToolUse[] = [];
 
   get observation(): ProviderObservation | undefined {
     return Object.keys(this.#observation).length === 0
@@ -430,13 +433,16 @@ class CodexProtocol {
           throw providerError(`Codex emitted ${type} before turn.started`);
         }
         if (!isInitializationWarning) this.#hasSubstantiveItem = true;
-        if (type === "item.completed" && item.type === "agent_message") {
-          if (typeof item.text !== "string") {
-            throw providerError(
-              "Codex completed an agent message without text",
-            );
+        if (type === "item.completed") {
+          this.#recordToolUse(item);
+          if (item.type === "agent_message") {
+            if (typeof item.text !== "string") {
+              throw providerError(
+                "Codex completed an agent message without text",
+              );
+            }
+            this.#completedText = item.text;
           }
-          this.#completedText = item.text;
         }
         break;
       }
@@ -483,6 +489,59 @@ class CodexProtocol {
       default:
         throw providerError(`Codex emitted unsupported event type "${type}"`);
     }
+  }
+
+  /**
+   * Summarize a completed item into the tool-use trail. This is a bounded
+   * forensic digest, not protocol parsing: an item whose payload shape is
+   * unexpected is skipped rather than failing the stream.
+   */
+  #recordToolUse(item: Record<string, unknown>): void {
+    let use: AgentToolUse | undefined;
+    switch (item.type) {
+      case "command_execution": {
+        if (
+          !Array.isArray(item.command) ||
+          item.command.some((part) => typeof part !== "string")
+        ) {
+          break;
+        }
+        use = { tool: "command_execution", input: summarizeToolPayload(item.command.join(" ")) };
+        if (
+          typeof item.exit_code === "number" &&
+          Number.isSafeInteger(item.exit_code)
+        ) {
+          use.exitCode = item.exit_code;
+        }
+        break;
+      }
+      case "mcp_tool_call": {
+        if (typeof item.tool !== "string" || item.tool.length === 0) break;
+        use = {
+          tool: `mcp:${item.tool}`,
+          ...(item.arguments === undefined
+            ? {}
+            : { input: summarizeToolPayload(item.arguments) }),
+        };
+        break;
+      }
+      case "web_search": {
+        if (typeof item.query !== "string") break;
+        use = { tool: "web_search", input: summarizeToolPayload(item.query) };
+        break;
+      }
+      case "file_change": {
+        if (!Array.isArray(item.changes)) break;
+        use = {
+          tool: "file_change",
+          input: summarizeToolPayload(item.changes),
+        };
+        break;
+      }
+      default:
+        break;
+    }
+    if (use !== undefined) appendToolUse(this.#toolUses, use);
   }
 
   finish(
@@ -559,6 +618,9 @@ class CodexProtocol {
       text: completedText,
       ...(request.model === undefined ? {} : { model: request.model }),
       ...(request.effort === undefined ? {} : { effort: request.effort }),
+      ...(this.#toolUses.length === 0
+        ? {}
+        : { toolUses: [...this.#toolUses] }),
     };
     if (request.schema !== undefined) {
       try {
