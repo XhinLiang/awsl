@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Accept Claude user context in stream-json output, including text and mixed
+  content blocks, while retaining tool-result error digests. User context is
+  ignored rather than included in the assistant result.
+- Show persistence error messages and their cause chains in CLI diagnostics,
+  applying secret redaction to each message and handling cyclic causes.
+
 ## 0.3.4 - 2026-09-12
 
 ### Added

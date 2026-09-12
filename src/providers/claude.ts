@@ -476,17 +476,21 @@ class ClaudeStreamState {
     if (
       !isRecord(message) ||
       message.role !== "user" ||
-      !Array.isArray(message.content) ||
-      message.content.length === 0 ||
-      message.content.some(
-        (block) => !isRecord(block) || block.type !== "tool_result",
-      )
+      (typeof message.content !== "string" && !Array.isArray(message.content))
     ) {
-      this.fail("only user tool-result events are supported");
+      this.fail("invalid user event");
       return;
     }
+    // Replayed user context is not assistant output. Only tool results
+    // contribute to the tool-use trail; ignore text and other content blocks.
+    if (typeof message.content === "string") return;
     for (const block of message.content) {
-      if (block.is_error !== true) continue;
+      if (
+        !isRecord(block) ||
+        block.type !== "tool_result" ||
+        block.is_error !== true
+      )
+        continue;
       const index = this.toolUseIndexById.get(String(block.tool_use_id ?? ""));
       const use = index === undefined ? undefined : this.toolUses[index];
       if (use !== undefined && use.error === undefined) {

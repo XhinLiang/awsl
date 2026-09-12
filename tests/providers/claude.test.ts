@@ -1035,33 +1035,36 @@ describe("Claude 2.1.218 stream protocol", () => {
     expect(seen.filter((type) => type === "rate_limit_event")).toHaveLength(1);
   });
 
-  test("records a bounded tool-use trail with error digests", async () => {
-    const outcome = await adapter().run(request("tool-trail"));
+  test.each(["tool-trail", "user-mixed-content"])(
+    "records a bounded tool-use trail with error digests for %s",
+    async (fixture) => {
+      const outcome = await adapter().run(request(fixture));
 
-    expect(outcome).toMatchObject({ kind: "completed" });
-    if (outcome.kind !== "completed") return;
-    const toolUses = outcome.result.toolUses ?? [];
-    expect(toolUses).toHaveLength(2);
-    expect(toolUses[0]).toMatchObject({
-      tool: "Bash",
-      error: "commit stage failed",
-    });
-    expect(toolUses[0].input).toContain(
-      "node dist/src/cli.js team --stage commit",
-    );
-    // The oversized Read input is clamped to the shared byte budget.
-    expect(
-      Buffer.byteLength(String(toolUses[1].input), "utf8"),
-    ).toBeLessThanOrEqual(240);
-    expect(toolUses[1].input?.endsWith("…")).toBe(true);
-    expect(toolUses[1]).not.toHaveProperty("error");
-  });
+      expect(outcome).toMatchObject({ kind: "completed" });
+      if (outcome.kind !== "completed") return;
+      const toolUses = outcome.result.toolUses ?? [];
+      expect(toolUses).toHaveLength(2);
+      expect(toolUses[0]).toMatchObject({
+        tool: "Bash",
+        error: "commit stage failed",
+      });
+      expect(toolUses[0].input).toContain(
+        "node dist/src/cli.js team --stage commit",
+      );
+      // The oversized Read input is clamped to the shared byte budget.
+      expect(
+        Buffer.byteLength(String(toolUses[1].input), "utf8"),
+      ).toBeLessThanOrEqual(240);
+      expect(toolUses[1].input?.endsWith("…")).toBe(true);
+      expect(toolUses[1]).not.toHaveProperty("error");
+    },
+  );
 
   test.each([
     "unknown-event",
     "duplicate-terminal",
     "post-terminal",
-    "user-non-tool-result",
+    "user-invalid-content",
   ])("fails closed for protocol fixture %s", async (fixture) => {
     await expect(adapter().run(request(fixture))).resolves.toMatchObject({
       kind: "error",
@@ -1071,6 +1074,16 @@ describe("Claude 2.1.218 stream protocol", () => {
       },
     });
   });
+
+  test.each(["user-non-tool-result", "user-string-content"])(
+    "ignores user context without changing the terminal result for %s",
+    async (fixture) => {
+      await expect(adapter().run(request(fixture))).resolves.toMatchObject({
+        kind: "completed",
+        result: { text: "ok" },
+      });
+    },
+  );
 
   test("ignores non-init system subtypes emitted by newer CLI versions", async () => {
     const outcome = await adapter().run(request("system-non-init"));
