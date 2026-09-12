@@ -1,4 +1,4 @@
-import { TOOL_USE_LIMITS, type AgentToolUse } from "./types.js";
+import { type AgentToolUse, TOOL_USE_LIMITS } from "./types.js";
 
 /**
  * Clamp a tool-use field to the shared byte budget, appending an ellipsis when

@@ -791,7 +791,11 @@ describe("Codex adapter contract", () => {
       },
       {
         type: "item.completed",
-        item: { id: "search-1", type: "web_search", query: "team digest report" },
+        item: {
+          id: "search-1",
+          type: "web_search",
+          query: "team digest report",
+        },
       },
       {
         type: "item.completed",

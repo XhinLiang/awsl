@@ -2,6 +2,7 @@ import { COMPATIBILITY_PROFILE } from "../compat/profile.js";
 import { validateProviderArgs } from "../config/model-map.js";
 import { AwslError } from "../core/errors.js";
 import { strictJsonClone } from "../core/strict-json.js";
+import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import type {
   AgentEffort,
   AgentToolUse,
@@ -14,7 +15,6 @@ import type {
   ProviderRequest,
   ProviderUsage,
 } from "../core/types.js";
-import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
 import {
   type ProviderProcessResult,

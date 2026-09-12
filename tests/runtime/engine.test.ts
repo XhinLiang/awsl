@@ -653,7 +653,9 @@ describe("runtime engine", () => {
     const oversized = Array.from({ length: 129 }, (_, index) => ({
       tool: `tool-${index}`,
     }));
-    for (const toolUses of [oversized, [{ tool: 123 }]]) {
+    // The runtime value is invalid on purpose; the cast only satisfies tsc.
+    const malformed = [{ tool: 123 }] as unknown as { tool: string }[];
+    for (const toolUses of [oversized, malformed]) {
       const provider = new RecordingProvider(() => ({
         kind: "completed",
         result: { text: "done", toolUses },

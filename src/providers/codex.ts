@@ -9,6 +9,7 @@ import {
 } from "../config/model-map.js";
 import { AwslError } from "../core/errors.js";
 import { strictJsonClone } from "../core/strict-json.js";
+import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import type {
   AgentEffort,
   AgentToolUse,
@@ -21,7 +22,6 @@ import type {
   ProviderRequest,
   ProviderUsage,
 } from "../core/types.js";
-import { appendToolUse, summarizeToolPayload } from "../core/tool-use.js";
 import { snapshotAdapterOptions, snapshotProviderIdentity } from "./options.js";
 import {
   type ProviderProcessResult,
@@ -506,7 +506,10 @@ class CodexProtocol {
         ) {
           break;
         }
-        use = { tool: "command_execution", input: summarizeToolPayload(item.command.join(" ")) };
+        use = {
+          tool: "command_execution",
+          input: summarizeToolPayload(item.command.join(" ")),
+        };
         if (
           typeof item.exit_code === "number" &&
           Number.isSafeInteger(item.exit_code)
@@ -618,9 +621,7 @@ class CodexProtocol {
       text: completedText,
       ...(request.model === undefined ? {} : { model: request.model }),
       ...(request.effort === undefined ? {} : { effort: request.effort }),
-      ...(this.#toolUses.length === 0
-        ? {}
-        : { toolUses: [...this.#toolUses] }),
+      ...(this.#toolUses.length === 0 ? {} : { toolUses: [...this.#toolUses] }),
     };
     if (request.schema !== undefined) {
       try {

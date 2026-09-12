@@ -1046,7 +1046,9 @@ describe("Claude 2.1.218 stream protocol", () => {
       tool: "Bash",
       error: "commit stage failed",
     });
-    expect(toolUses[0].input).toContain("node dist/src/cli.js team --stage commit");
+    expect(toolUses[0].input).toContain(
+      "node dist/src/cli.js team --stage commit",
+    );
     // The oversized Read input is clamped to the shared byte budget.
     expect(
       Buffer.byteLength(String(toolUses[1].input), "utf8"),

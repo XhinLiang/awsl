@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { TOOL_USE_LIMITS } from "../../src/core/types.js";
 import {
   appendToolUse,
   summarizeToolPayload,
   truncateToolField,
 } from "../../src/core/tool-use.js";
+import { TOOL_USE_LIMITS } from "../../src/core/types.js";
 
 describe("tool-use trail helpers", () => {
   test("keeps a short field verbatim", () => {

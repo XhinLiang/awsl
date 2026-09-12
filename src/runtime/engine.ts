@@ -398,9 +398,7 @@ function isCapturableToolUses(value: unknown): value is AgentToolUse[] {
         return false;
       }
     }
-    return (
-      entry.exitCode === undefined || Number.isSafeInteger(entry.exitCode)
-    );
+    return entry.exitCode === undefined || Number.isSafeInteger(entry.exitCode);
   });
 }
 
