@@ -24,7 +24,26 @@ export interface AgentResult {
   data?: unknown;
   model?: string;
   effort?: AgentEffort;
+  /** Bounded tool-use trail the provider observed, for post-run forensics. */
+  toolUses?: readonly AgentToolUse[];
 }
+
+/**
+ * One tool invocation an agent actually issued (name + bounded input/error
+ * digest). Providers cap the trail (entries and per-field bytes) before it
+ * reaches the engine, so a journal stays small even for long agentic runs.
+ */
+export interface AgentToolUse {
+  tool: string;
+  input?: string;
+  error?: string;
+  exitCode?: number;
+}
+
+export const TOOL_USE_LIMITS = Object.freeze({
+  maxEntries: 128,
+  maxFieldBytes: 240,
+});
 
 export type ProviderId = "codex" | "claude";
 

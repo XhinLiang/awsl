@@ -767,6 +767,85 @@ describe("Codex adapter contract", () => {
     });
   });
 
+  test("records a bounded tool-use trail from completed items", async () => {
+    const events = [
+      { type: "thread.started", thread_id: "thread-1" },
+      { type: "turn.started" },
+      {
+        type: "item.completed",
+        item: {
+          id: "cmd-1",
+          type: "command_execution",
+          command: ["node", "dist/src/cli.js", "team", "--stage", "commit"],
+          exit_code: 1,
+        },
+      },
+      {
+        type: "item.completed",
+        item: {
+          id: "mcp-1",
+          type: "mcp_tool_call",
+          tool: "docs-fetch",
+          arguments: { id: "doc-7" },
+        },
+      },
+      {
+        type: "item.completed",
+        item: {
+          id: "search-1",
+          type: "web_search",
+          query: "team digest report",
+        },
+      },
+      {
+        type: "item.completed",
+        item: {
+          id: "change-1",
+          type: "file_change",
+          changes: [{ path: "output/digest/acme/final.md", kind: "add" }],
+        },
+      },
+      {
+        type: "item.completed",
+        // Unexpected payload shape: skipped, not fatal.
+        item: {
+          id: "cmd-2",
+          type: "command_execution",
+          command: "not-an-array",
+        },
+      },
+      {
+        type: "item.completed",
+        item: { id: "message-1", type: "agent_message", text: "ok" },
+      },
+      {
+        type: "turn.completed",
+        usage: { input_tokens: 5, cached_input_tokens: 0, output_tokens: 2 },
+      },
+    ];
+    const adapter = new CodexAdapter({
+      identity,
+      processRunner: fakeRunner(events).run,
+    });
+
+    const outcome = await adapter.run(request());
+    expect(outcome).toMatchObject({ kind: "completed" });
+    if (outcome.kind !== "completed") return;
+    expect(outcome.result.toolUses).toEqual([
+      {
+        tool: "command_execution",
+        input: "node dist/src/cli.js team --stage commit",
+        exitCode: 1,
+      },
+      { tool: "mcp:docs-fetch", input: '{"id":"doc-7"}' },
+      { tool: "web_search", input: "team digest report" },
+      {
+        tool: "file_change",
+        input: '[{"path":"output/digest/acme/final.md","kind":"add"}]',
+      },
+    ]);
+  });
+
   test("preserves an exact persistence error from the process callback path", async () => {
     const persistence = new AwslError("PERSISTENCE_ERROR", "raw sink failed", {
       recoverable: false,

@@ -35,12 +35,14 @@ import { strictJsonClone } from "../core/strict-json.js";
 import type {
   AgentEffort,
   AgentResult,
+  AgentToolUse,
   JsonValue,
   ProviderAdapter,
   ProviderOutcome,
   ProviderUsage,
   RunStatus,
 } from "../core/types.js";
+import { TOOL_USE_LIMITS } from "../core/types.js";
 import { prepareProviderJsonSchema } from "../providers/schema.js";
 import { journalKeyV2 } from "../store/canonical-json.js";
 import { redactJson } from "../store/redact.js";
@@ -369,6 +371,37 @@ function captureUsage(
   return usage as unknown as ProviderUsage;
 }
 
+function isCapturableToolUses(value: unknown): value is AgentToolUse[] {
+  if (!Array.isArray(value) || value.length > TOOL_USE_LIMITS.maxEntries) {
+    return false;
+  }
+  return value.every((entry) => {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      Object.keys(entry).some(
+        (key) => !["tool", "input", "error", "exitCode"].includes(key),
+      ) ||
+      typeof entry.tool !== "string" ||
+      entry.tool.length === 0
+    ) {
+      return false;
+    }
+    for (const field of ["input", "error"] as const) {
+      const text = entry[field];
+      if (
+        text !== undefined &&
+        (typeof text !== "string" ||
+          Buffer.byteLength(text, "utf8") > TOOL_USE_LIMITS.maxFieldBytes)
+      ) {
+        return false;
+      }
+    }
+    return entry.exitCode === undefined || Number.isSafeInteger(entry.exitCode);
+  });
+}
+
 function captureAgentResult(
   value: AgentResult,
   provider: ProviderAdapter,
@@ -388,13 +421,14 @@ function captureAgentResult(
   const result = snapshot as Record<string, unknown>;
   if (
     Object.keys(result).some(
-      (key) => !["text", "data", "model", "effort"].includes(key),
+      (key) => !["text", "data", "model", "effort", "toolUses"].includes(key),
     ) ||
     typeof result.text !== "string" ||
     (result.model !== undefined && typeof result.model !== "string") ||
     (result.effort !== undefined &&
       (typeof result.effort !== "string" ||
-        !efforts.has(result.effort as AgentEffort)))
+        !efforts.has(result.effort as AgentEffort))) ||
+    (result.toolUses !== undefined && !isCapturableToolUses(result.toolUses))
   )
     throw providerError(provider, "provider result is invalid");
   return result as unknown as AgentResult;
