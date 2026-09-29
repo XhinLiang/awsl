@@ -2,7 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.3.6 - 2026-09-29
+
+### Fixed
+
+- Accept bounded provider tool-use trails in completed journal records so runs
+  can finish and resume after agents use tools.
+
+## 0.3.5 - 2026-09-29
 
 ### Fixed
 
