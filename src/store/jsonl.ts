@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { TextDecoder } from "node:util";
 
 import { AwslError } from "../core/errors.js";
+import { isCapturableToolUses } from "../core/tool-use.js";
 import { canonicalJson } from "./canonical-json.js";
 import type {
   JournalAttemptRecordV1,
@@ -79,7 +80,7 @@ function validateCallPayload(value: unknown): void {
       (value.origin !== "live" && value.origin !== "reused") ||
       !isObject(result) ||
       Object.keys(result).some(
-        (key) => !["text", "data", "model", "effort"].includes(key),
+        (key) => !["text", "data", "model", "effort", "toolUses"].includes(key),
       ) ||
       typeof result.text !== "string" ||
       (result.model !== undefined && typeof result.model !== "string") ||
@@ -87,6 +88,8 @@ function validateCallPayload(value: unknown): void {
         !["low", "medium", "high", "xhigh", "max"].includes(
           String(result.effort),
         )) ||
+      (result.toolUses !== undefined &&
+        !isCapturableToolUses(result.toolUses)) ||
       value.value === undefined
     )
       throw persistence("invalid completed result payload");

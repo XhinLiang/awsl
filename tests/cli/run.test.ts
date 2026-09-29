@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   writeFile,
 } from "node:fs/promises";
@@ -319,6 +320,75 @@ describe("CLI workflow execution", () => {
       },
     });
     expect(await readFile(log, "utf8")).toBe("version\nrun\n");
+  });
+
+  test("completes and resumes a Codex call with a durable tool-use trail", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-tool-use-")));
+    const log = join(cwd, "codex.log");
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_CODEX_COMMAND: fakeCodex,
+      AWSL_FAKE_CODEX_LOG: log,
+      AWSL_FAKE_CODEX_TOOL_USE: "1",
+      CODEX_HOME: join(cwd, "codex-home"),
+    };
+    const first = cliContext(cwd, env);
+    const workflow = join(workflows, "nested", "basic-agent.js");
+    const code = await executeCli(
+      ["run", workflow, "--args", '{"prompt":"hello"}', "--format", "json"],
+      first.context,
+    );
+    expect(code, first.output().stderr).toBe(0);
+    const runId = JSON.parse(first.output().stdout).runId as string;
+    const projects = await readdir(join(cwd, "state", "projects"));
+    expect(projects).toHaveLength(1);
+    const journal = (
+      await readFile(
+        join(
+          cwd,
+          "state",
+          "projects",
+          projects[0],
+          "runs",
+          runId,
+          "journal.jsonl",
+        ),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(journal).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          state: "completed",
+          completed: expect.objectContaining({
+            result: expect.objectContaining({
+              toolUses: [
+                {
+                  tool: "file_change",
+                  input: '[{"path":"proof.txt","kind":"add"}]',
+                },
+              ],
+            }),
+          }),
+        }),
+      ]),
+    );
+
+    const resumed = cliContext(cwd, env);
+    expect(
+      await executeCli(["resume", runId, "--format", "json"], resumed.context),
+      resumed.output().stderr,
+    ).toBe(0);
+    expect(JSON.parse(resumed.output().stdout).status).toBe("completed");
+    expect(
+      (await readFile(log, "utf8"))
+        .split("\n")
+        .filter((line) => line === "run"),
+    ).toHaveLength(1);
   });
 
   test("passes the CLI context environment to the Claude provider process", async () => {

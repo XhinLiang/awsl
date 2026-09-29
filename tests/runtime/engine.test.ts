@@ -1482,9 +1482,16 @@ return await agent("two", { agentType: "drift" })
   });
 
   test("writes a validator-clean file journal and resumes its longest prefix", async () => {
+    const toolUses = [
+      {
+        tool: "command_execution",
+        input: "node dist/src/cli.js user --stage finalize-persist",
+        exitCode: 0,
+      },
+    ];
     const provider = new RecordingProvider((request) => ({
       kind: "completed",
-      result: { text: request.prompt.toUpperCase() },
+      result: { text: request.prompt.toUpperCase(), toolUses },
       usage: {
         inputTokens: 2,
         outputTokens: 1,
@@ -1535,6 +1542,19 @@ return await agent("two", { agentType: "drift" })
 
       expect(second.result).toEqual(first.result);
       expect(provider.calls).toHaveLength(1);
+      expect(
+        journal.filter(
+          (record) => record.kind === "call" && record.state === "completed",
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            completed: expect.objectContaining({
+              result: expect.objectContaining({ toolUses }),
+            }),
+          }),
+        ]),
+      );
       expect(
         journal.some(
           (record) =>

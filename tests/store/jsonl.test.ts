@@ -56,6 +56,36 @@ async function journal(bytes: Buffer | string): Promise<string> {
 }
 
 describe("readJournalJsonl", () => {
+  test("loads a completed provider result with a bounded tool-use trail", () => {
+    const completed = call({
+      recordSeq: 3,
+      state: "completed",
+      completed: {
+        outcome: "result",
+        origin: "live",
+        result: {
+          text: "ok",
+          toolUses: [
+            {
+              tool: "command_execution",
+              input: "node dist/src/cli.js team --stage finalize-persist",
+              exitCode: 0,
+            },
+          ],
+        },
+        value: "ok",
+        usage: { complete: true, outputTokens: 1 },
+      },
+    });
+    const records = readJournalJsonlBytes(
+      Buffer.from(
+        `${JSON.stringify(attempt())}\n${JSON.stringify(call())}\n${JSON.stringify(call({ recordSeq: 2, state: "started" }))}\n${JSON.stringify(completed)}\n`,
+      ),
+      "run-1",
+    );
+    expect(records.records.at(-1)).toMatchObject(completed);
+  });
+
   test("rejects schema-invalid completed AgentResult payloads during load", () => {
     const scheduled = call();
     const started = call({ recordSeq: 2, state: "started" });
@@ -78,6 +108,34 @@ describe("readJournalJsonl", () => {
         "run-1",
       ),
     ).toThrowError(/invalid completed result payload/);
+  });
+
+  test("rejects malformed and unbounded tool-use trails during load", () => {
+    for (const toolUses of [
+      [{ tool: "command_execution", input: "x".repeat(241) }],
+      Array.from({ length: 129 }, () => ({ tool: "command_execution" })),
+      [{ tool: "command_execution", unexpected: true }],
+    ]) {
+      const completed = call({
+        recordSeq: 3,
+        state: "completed",
+        completed: {
+          outcome: "result",
+          origin: "live",
+          result: { text: "ok", toolUses } as never,
+          value: "ok",
+          usage: { complete: true, outputTokens: 1 },
+        },
+      });
+      expect(() =>
+        readJournalJsonlBytes(
+          Buffer.from(
+            `${JSON.stringify(attempt())}\n${JSON.stringify(call())}\n${JSON.stringify(call({ recordSeq: 2, state: "started" }))}\n${JSON.stringify(completed)}\n`,
+          ),
+          "run-1",
+        ),
+      ).toThrowError(/invalid completed result payload/);
+    }
   });
   test("loads a complete final record without LF", async () => {
     const path = await journal(JSON.stringify(attempt()));

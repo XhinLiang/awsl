@@ -32,17 +32,16 @@ import {
 import { AwslError, type AwslErrorCode } from "../core/errors.js";
 import { type AwslEvent, createEvent } from "../core/events.js";
 import { strictJsonClone } from "../core/strict-json.js";
+import { isCapturableToolUses } from "../core/tool-use.js";
 import type {
   AgentEffort,
   AgentResult,
-  AgentToolUse,
   JsonValue,
   ProviderAdapter,
   ProviderOutcome,
   ProviderUsage,
   RunStatus,
 } from "../core/types.js";
-import { TOOL_USE_LIMITS } from "../core/types.js";
 import { prepareProviderJsonSchema } from "../providers/schema.js";
 import { journalKeyV2 } from "../store/canonical-json.js";
 import { redactJson } from "../store/redact.js";
@@ -369,37 +368,6 @@ function captureUsage(
   )
     throw providerError(provider, "provider usage is invalid");
   return usage as unknown as ProviderUsage;
-}
-
-function isCapturableToolUses(value: unknown): value is AgentToolUse[] {
-  if (!Array.isArray(value) || value.length > TOOL_USE_LIMITS.maxEntries) {
-    return false;
-  }
-  return value.every((entry) => {
-    if (
-      entry === null ||
-      typeof entry !== "object" ||
-      Array.isArray(entry) ||
-      Object.keys(entry).some(
-        (key) => !["tool", "input", "error", "exitCode"].includes(key),
-      ) ||
-      typeof entry.tool !== "string" ||
-      entry.tool.length === 0
-    ) {
-      return false;
-    }
-    for (const field of ["input", "error"] as const) {
-      const text = entry[field];
-      if (
-        text !== undefined &&
-        (typeof text !== "string" ||
-          Buffer.byteLength(text, "utf8") > TOOL_USE_LIMITS.maxFieldBytes)
-      ) {
-        return false;
-      }
-    }
-    return entry.exitCode === undefined || Number.isSafeInteger(entry.exitCode);
-  });
 }
 
 function captureAgentResult(

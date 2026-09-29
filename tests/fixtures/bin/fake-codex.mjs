@@ -43,6 +43,16 @@ if (process.env.AWSL_FAKE_CODEX_FAIL === "1") {
   });
   process.exit(0);
 }
+if (process.env.AWSL_FAKE_CODEX_TOOL_USE === "1") {
+  emit({
+    type: "item.completed",
+    item: {
+      id: "change-1",
+      type: "file_change",
+      changes: [{ path: "proof.txt", kind: "add" }],
+    },
+  });
+}
 emit({
   type: "item.completed",
   item: {
