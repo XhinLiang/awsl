@@ -67,7 +67,7 @@ symlinks are removed. Schema validation, provider permissions, the Workflow ABI,
 and durable-state formats are unchanged. This is fixture evidence; the corrected
 code has not yet been exercised in an authenticated provider run.
 
-Implementation PR: pending.
+Implementation PR: [#22](https://github.com/XhinLiang/awsl/pull/22).
 
 | Behavior | Status | Evidence | Evidence pointer | Boundary |
 |---|---|---|---|---|
