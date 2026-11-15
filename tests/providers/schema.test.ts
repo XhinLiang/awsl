@@ -1,4 +1,15 @@
-import { access, lstat, readFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
@@ -325,6 +336,43 @@ describe("provider JSON artifacts", () => {
         label: "schema",
       }).packet,
     ).toBe(original.packet);
+  });
+
+  test("removes model helper files and directories with the private artifact", async () => {
+    const artifact = await createPrivateJsonFile("{}", {
+      basename: "result.json",
+      prefix: "awsl-helper-test-",
+    });
+    try {
+      await mkdir(join(artifact.directory, "helpers"));
+      await writeFile(
+        join(artifact.directory, "helpers", "build.py"),
+        "# fixture helper\n",
+      );
+      await expect(artifact.dispose()).resolves.toBeUndefined();
+      await expect(access(artifact.directory)).rejects.toThrow();
+    } finally {
+      await rm(artifact.directory, { recursive: true, force: true });
+    }
+  });
+
+  test("does not follow auxiliary symlinks outside the private directory", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "awsl-outside-test-"));
+    const marker = join(outside, "keep.txt");
+    const artifact = await createPrivateJsonFile("{}", {
+      basename: "result.json",
+      prefix: "awsl-symlink-test-",
+    });
+    try {
+      await writeFile(marker, "keep");
+      await symlink(outside, join(artifact.directory, "helper"), "dir");
+      await expect(artifact.dispose()).resolves.toBeUndefined();
+      expect(await readFile(marker, "utf8")).toBe("keep");
+      await expect(access(artifact.directory)).rejects.toThrow();
+    } finally {
+      await rm(artifact.directory, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   test("creates mode-0600 files in a mode-0700 directory and removes both", async () => {

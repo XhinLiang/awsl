@@ -58,6 +58,17 @@ Evidence types:
 
 ## Runtime behavior
 
+The 0.3.7 private-artifact cleanup correction removes the directory
+allocated by awsl, including helper files created while producing a structured
+result. This prevents `ENOTEMPTY` during cleanup from replacing a completed
+Codex result. Local artifact and Codex protocol fixtures cover nested helpers,
+idempotence, and preserving targets outside the directory when auxiliary
+symlinks are removed. Schema validation, provider permissions, the Workflow ABI,
+and durable-state formats are unchanged. This is fixture evidence; the corrected
+code has not yet been exercised in an authenticated provider run.
+
+Implementation PR: pending.
+
 | Behavior | Status | Evidence | Evidence pointer | Boundary |
 |---|---|---|---|---|
 | Installed `awsl <workflow.js>` command and package export | `verified` | `static` | `tests/package/install-smoke.test.ts` — `packed CLI installs and runs from a clean directory`; `pnpm run test:package` | The smoke test packs, installs with cache-first dependency resolution, invokes the CLI, and imports the package root. |
