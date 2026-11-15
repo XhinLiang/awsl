@@ -1,5 +1,13 @@
-import { access, lstat, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
@@ -1369,66 +1377,80 @@ describe("Codex adapter contract", () => {
     await expect(access(schemaPath)).rejects.toThrow();
   });
 
-  test("uses a private result file for a large structured prompt and cleans up", async () => {
-    let schemaPath = "";
-    let resultPath = "";
-    const events = structuredClone(successEvents);
-    const fixture = fakeRunner(events, async (options) => {
-      const pathLine = options.prompt
-        .split("\n")
-        .find((line) =>
-          line.startsWith(
-            "Write the exact JSON result to this file, replacing its current contents: ",
-          ),
-        );
-      expect(pathLine).toBeDefined();
-      resultPath = JSON.parse(
-        pathLine?.slice(pathLine.indexOf(": ") + 2) ?? "",
-      ) as string;
-      await writeFile(resultPath, '{"rows":[1,2,3]}', "utf8");
+  test.each([false, true])(
+    "uses a private result file and cleans up model helpers: %s",
+    async (withHelper) => {
+      let schemaPath = "";
+      let resultPath = "";
+      const events = structuredClone(successEvents);
+      const fixture = fakeRunner(events, async (options) => {
+        const pathLine = options.prompt
+          .split("\n")
+          .find((line) =>
+            line.startsWith(
+              "Write the exact JSON result to this file, replacing its current contents: ",
+            ),
+          );
+        expect(pathLine).toBeDefined();
+        resultPath = JSON.parse(
+          pathLine?.slice(pathLine.indexOf(": ") + 2) ?? "",
+        ) as string;
+        await writeFile(resultPath, '{"rows":[1,2,3]}', "utf8");
+        if (withHelper) {
+          await writeFile(
+            join(dirname(resultPath), "build.py"),
+            "# fixture helper\n",
+          );
+        }
 
-      const marker = options.argv.indexOf("--output-schema");
-      schemaPath = options.argv[marker + 1] ?? "";
-      expect(JSON.parse(await readFile(schemaPath, "utf8"))).toEqual({
-        additionalProperties: false,
-        properties: {
-          result_path: { enum: [resultPath], type: "string" },
-        },
-        required: ["result_path"],
-        type: "object",
-      });
-      const message = events[5] as { item: { text: string } };
-      message.item.text = JSON.stringify({ result_path: resultPath });
-    });
-    const adapter = new CodexAdapter({
-      identity,
-      processRunner: fixture.run,
-    });
-
-    await expect(
-      adapter.run(
-        request({
-          prompt: "x".repeat(CODEX_FILE_RESULT_PROMPT_BYTES),
-          schema: {
-            additionalProperties: false,
-            properties: {
-              rows: { items: { type: "integer" }, type: "array" },
-            },
-            required: ["rows"],
-            type: "object",
+        const marker = options.argv.indexOf("--output-schema");
+        schemaPath = options.argv[marker + 1] ?? "";
+        expect(JSON.parse(await readFile(schemaPath, "utf8"))).toEqual({
+          additionalProperties: false,
+          properties: {
+            result_path: { enum: [resultPath], type: "string" },
           },
-        }),
-      ),
-    ).resolves.toMatchObject({
-      kind: "completed",
-      result: {
-        data: { rows: [1, 2, 3] },
-        text: '{"rows":[1,2,3]}',
-      },
-    });
-    await expect(access(schemaPath)).rejects.toThrow();
-    await expect(access(resultPath)).rejects.toThrow();
-  });
+          required: ["result_path"],
+          type: "object",
+        });
+        const message = events[5] as { item: { text: string } };
+        message.item.text = JSON.stringify({ result_path: resultPath });
+      });
+      const adapter = new CodexAdapter({
+        identity,
+        processRunner: fixture.run,
+      });
+
+      try {
+        await expect(
+          adapter.run(
+            request({
+              prompt: "x".repeat(CODEX_FILE_RESULT_PROMPT_BYTES),
+              schema: {
+                additionalProperties: false,
+                properties: {
+                  rows: { items: { type: "integer" }, type: "array" },
+                },
+                required: ["rows"],
+                type: "object",
+              },
+            }),
+          ),
+        ).resolves.toMatchObject({
+          kind: "completed",
+          result: {
+            data: { rows: [1, 2, 3] },
+            text: '{"rows":[1,2,3]}',
+          },
+        });
+        await expect(access(schemaPath)).rejects.toThrow();
+        await expect(access(resultPath)).rejects.toThrow();
+      } finally {
+        if (resultPath)
+          await rm(dirname(resultPath), { recursive: true, force: true });
+      }
+    },
+  );
 
   test("closes every reachable object required list only in the Codex schema packet", async () => {
     const workflowSchema = {

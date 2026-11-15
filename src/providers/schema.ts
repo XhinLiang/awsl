@@ -1,12 +1,4 @@
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  rmdir,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -338,21 +330,6 @@ export interface PrivateJsonFileOptions {
   prefix: string;
 }
 
-async function ignoreMissing(operation: () => Promise<void>): Promise<void> {
-  try {
-    await operation();
-  } catch (error) {
-    if (
-      error === null ||
-      typeof error !== "object" ||
-      !("code" in error) ||
-      error.code !== "ENOENT"
-    ) {
-      throw error;
-    }
-  }
-}
-
 export async function createPrivateJsonFile(
   packet: string,
   options: PrivateJsonFileOptions,
@@ -377,8 +354,7 @@ export async function createPrivateJsonFile(
   const dispose = async () => {
     if (disposed) return;
     disposed = true;
-    await ignoreMissing(() => unlink(path));
-    await ignoreMissing(() => rmdir(directory));
+    await rm(directory, { recursive: true, force: true });
   };
 
   try {

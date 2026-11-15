@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+## 0.3.7 - 2026-11-15
+
+### Fixed
+
+- Remove private JSON artifact directories together with model-created helper
+  files, so cleanup does not replace a completed Codex result with an
+  `ENOTEMPTY` failure. Auxiliary symlinks are removed without following their
+  targets.
+
 ## 0.3.6 - 2026-09-29
 
 ### Fixed
