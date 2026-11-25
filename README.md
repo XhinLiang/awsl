@@ -170,9 +170,11 @@ awsl help <command>
 `run` accepts:
 
 ```text
---provider codex|claude
+--provider codex|claude|agy
 --args <json>
 --args-file <path|->
+--codex-sandbox read-only|workspace-write|danger-full-access
+--agy-permission-mode accept-edits|auto|plan|bypassPermissions
 --cwd <path>
 --budget <output-tokens>
 --format auto|pretty|jsonl|json
@@ -280,6 +282,7 @@ Recognized environment variables are:
 - `AWSL_RAW_PROVIDER_EVENTS`
 - `AWSL_CODEX_COMMAND`
 - `AWSL_CLAUDE_COMMAND`
+- `AWSL_AGY_COMMAND`
 
 The project config is `.awsl/config.toml`. On macOS, user configuration and
 state live below `~/Library/Application Support/awsl`. On Linux and WSL they
@@ -306,7 +309,7 @@ plugin_dirs = []
 ```
 
 Provider tables accept `executable`, `args`, `default_model`,
-`native_models`, `tiers`, and `models`; `profile` and `sandbox_mode` are Codex-only.
+`native_models`, `tiers`, and `models`; `profile` and `sandbox_mode` are Codex-only, and `permission_mode` is `agy`-only.
 
 For an explicitly authorized run, select Codex permissions without changing the
 user's native configuration:

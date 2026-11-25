@@ -23,6 +23,7 @@ import {
   type ProviderPinV2,
   type RunSourceIdentityV1,
   createProviderPin,
+  parseProviderPin,
 } from "../config/provider-pin.js";
 import type { LoadedConfig, ResolvedAwslConfig } from "../config/types.js";
 import {
@@ -39,6 +40,7 @@ import type {
   ProviderId,
   ProviderIdentity,
 } from "../core/types.js";
+import { AgyAdapter } from "../providers/agy.js";
 import { ClaudeAdapter } from "../providers/claude.js";
 import { CodexAdapter } from "../providers/codex.js";
 import {
@@ -148,6 +150,7 @@ interface NormalizedContext {
 
 interface RunCommandOptions {
   readonly codexSandbox?: string;
+  readonly agyPermissionMode?: string;
   readonly provider?: string;
   readonly args?: string;
   readonly argsFile?: string;
@@ -158,6 +161,7 @@ interface RunCommandOptions {
 
 interface ResumeCommandOptions {
   readonly codexSandbox?: string;
+  readonly agyPermissionMode?: string;
   readonly args?: string;
   readonly argsFile?: string;
   readonly budget?: string;
@@ -223,7 +227,7 @@ function usage(message = "invalid command line"): never {
 
 function provider(value: string | undefined): ProviderId | undefined {
   if (value === undefined) return undefined;
-  if (value !== "codex" && value !== "claude")
+  if (value !== "codex" && value !== "claude" && value !== "agy")
     throw new AwslError("CONFIG_ERROR", "provider is invalid", {
       recoverable: false,
     });
@@ -373,23 +377,34 @@ function adapter(
   const selected = config.providers[config.provider];
   const processRunner = (options: RunProviderProcessOptions) =>
     runProviderProcess({ ...options, env });
-  return config.provider === "codex"
-    ? new CodexAdapter({
-        identity,
-        configuredArgs: selected.args,
-        ...(config.providers.codex.sandboxMode === undefined
-          ? {}
-          : { sandboxMode: config.providers.codex.sandboxMode }),
-        ...(config.providers.codex.profile === undefined
-          ? {}
-          : { profile: config.providers.codex.profile }),
-        processRunner,
-      })
-    : new ClaudeAdapter({
-        identity,
-        configuredArgs: selected.args,
-        processRunner,
-      });
+  if (config.provider === "codex") {
+    return new CodexAdapter({
+      identity,
+      configuredArgs: selected.args,
+      ...(config.providers.codex.sandboxMode === undefined
+        ? {}
+        : { sandboxMode: config.providers.codex.sandboxMode }),
+      ...(config.providers.codex.profile === undefined
+        ? {}
+        : { profile: config.providers.codex.profile }),
+      processRunner,
+    });
+  }
+  if (config.provider === "agy") {
+    return new AgyAdapter({
+      identity,
+      configuredArgs: selected.args,
+      ...(config.providers.agy.permissionMode === undefined
+        ? {}
+        : { permissionMode: config.providers.agy.permissionMode }),
+      processRunner,
+    });
+  }
+  return new ClaudeAdapter({
+    identity,
+    configuredArgs: selected.args,
+    processRunner,
+  });
 }
 
 function initialSources(
@@ -418,8 +433,16 @@ async function prepareRuntime(options: {
   readonly workflow: string;
   readonly providerOverride?: ProviderId;
   readonly codexSandbox?: string;
+  readonly agyPermissionMode?: string;
 }): Promise<PreparedRuntime> {
   const canonical = await canonicalCwd(options.cwd);
+  const cliProviders: Record<string, unknown> = {};
+  if (options.codexSandbox !== undefined) {
+    cliProviders.codex = { sandbox_mode: options.codexSandbox };
+  }
+  if (options.agyPermissionMode !== undefined) {
+    cliProviders.agy = { permission_mode: options.agyPermissionMode };
+  }
   const loaded = await loadConfig({
     cwd: canonical,
     env: options.context.env,
@@ -427,15 +450,24 @@ async function prepareRuntime(options: {
       ...(options.providerOverride === undefined
         ? {}
         : { provider: options.providerOverride }),
-      ...(options.codexSandbox === undefined
+      ...(Object.keys(cliProviders).length === 0
         ? {}
-        : { providers: { codex: { sandbox_mode: options.codexSandbox } } }),
+        : { providers: cliProviders }),
     },
   });
   if (options.codexSandbox !== undefined && loaded.value.provider !== "codex")
     throw new AwslError(
       "CONFIG_ERROR",
       "--codex-sandbox requires the Codex provider",
+      { recoverable: false },
+    );
+  if (
+    options.agyPermissionMode !== undefined &&
+    loaded.value.provider !== "agy"
+  )
+    throw new AwslError(
+      "CONFIG_ERROR",
+      "--agy-permission-mode requires the agy provider",
       { recoverable: false },
     );
   const root = await resolveRootWorkflow(options.workflow, canonical);
@@ -450,6 +482,9 @@ async function prepareRuntime(options: {
       `${options.context.homeDir}/.claude`,
     codexConfigDir:
       options.context.env.CODEX_HOME || `${options.context.homeDir}/.codex`,
+    agyConfigDir:
+      options.context.env.AGY_CONFIG_DIR ||
+      `${options.context.homeDir}/.gemini/antigravity-cli`,
   });
   const selected = loaded.value.providers[loaded.value.provider];
   const identity = await resolveProviderIdentity({
@@ -669,6 +704,7 @@ async function runCommand(
     workflow,
     providerOverride: provider(rawOptions.provider),
     codexSandbox: rawOptions.codexSandbox,
+    agyPermissionMode: rawOptions.agyPermissionMode,
   });
   const state = await ensureProjectState(runtime.loaded.value.stateDir, {
     projectRoot: runtime.projectRoot,
@@ -777,11 +813,16 @@ async function resumeCommand(
     rawOptions.budget === undefined
       ? stored.budget.total
       : parseBudget(rawOptions.budget);
+  const storedPin = parseProviderPin(stored.providerPin);
   const runtime = await prepareRuntime({
     context,
     cwd: stored.canonicalCwd,
     workflow: stored.root.reference,
+    ...(located.loaded.provenance["/provider"]?.layer === "defaults"
+      ? { providerOverride: storedPin.provider }
+      : {}),
     codexSandbox: rawOptions.codexSandbox,
+    agyPermissionMode: rawOptions.agyPermissionMode,
   });
   const records = await located.store.loadJournal();
   const store = await FileRunStore.openExisting({
@@ -1083,17 +1124,18 @@ async function doctorCommand(
       return { available: false };
     }
   };
-  const [git, codex, claude] = await Promise.all([
+  const [git, codex, claude, agy] = await Promise.all([
     gitCheck(),
     providerCheck("codex"),
     providerCheck("claude"),
+    providerCheck("agy"),
   ]);
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   const node = {
     available: Number.isSafeInteger(nodeMajor) && nodeMajor >= 22,
     version: process.versions.node,
   };
-  const checks = { node, git, codex, claude };
+  const checks = { node, git, codex, claude, agy };
   const selectedProvider = loaded.value.provider;
   const selected = checks[selectedProvider];
   await writeValue(
@@ -1185,7 +1227,7 @@ Workflow files are trusted code. A run uses one provider and never falls back.`,
         "question for the demo panel",
         "What makes a coding-agent workflow worth making durable?",
       )
-      .option("--provider <provider>", "codex or claude")
+      .option("--provider <provider>", "codex, claude, or agy")
       .option("--cwd <path>", "session working directory")
       .option("--budget <tokens>", "output token budget", "8000"),
   ).addHelpText(
@@ -1233,12 +1275,16 @@ Examples:
       .command("run")
       .description("run a workflow")
       .argument("<workflow>")
-      .option("--provider <provider>", "codex or claude")
+      .option("--provider <provider>", "codex, claude, or agy")
       .option("--args <json>", "workflow arguments")
       .option("--args-file <path>", "workflow arguments file or -")
       .option(
         "--codex-sandbox <mode>",
         "explicit Codex run sandbox: read-only, workspace-write, or danger-full-access",
+      )
+      .option(
+        "--agy-permission-mode <mode>",
+        "explicit agy permission mode: accept-edits, auto, plan, or bypassPermissions",
       )
       .option("--cwd <path>", "session working directory")
       .option("--budget <tokens>", "output token budget"),
@@ -1272,6 +1318,10 @@ Examples:
       .option(
         "--codex-sandbox <mode>",
         "Codex sandbox; must match the original run",
+      )
+      .option(
+        "--agy-permission-mode <mode>",
+        "agy permission mode; must match the original run",
       )
       .option("--budget <tokens>", "replacement output token budget"),
   ).addHelpText(

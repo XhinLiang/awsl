@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Add native Antigravity CLI (`agy`) provider compatibility (`--provider agy`,
+  `AWSL_AGY_COMMAND`, `[providers.agy]`, and `awsl doctor` checks), including
+  `stream-json` input/output handling, bounded tool-use forensic trails,
+  reasoning/cached token accounting, private file-backed spill for oversized
+  prompts and structured outputs, and run-pinned `--agy-permission-mode`
+  (`providers.agy.permission_mode`) across `run` and `resume`. Existing Codex
+  and Claude durable fingerprints remain unchanged when `providers.agy` uses
+  built-in defaults.
+
 ## 0.3.7 - 2026-11-15
 
 ### Fixed

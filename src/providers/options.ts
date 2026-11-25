@@ -79,7 +79,12 @@ export function snapshotProviderIdentity(
   }
 
   if (snapshot.id !== provider) {
-    const adapter = provider === "codex" ? "CodexAdapter" : "ClaudeAdapter";
+    const adapter =
+      provider === "codex"
+        ? "CodexAdapter"
+        : provider === "claude"
+          ? "ClaudeAdapter"
+          : "AgyAdapter";
     throw new TypeError(`${adapter} requires a ${provider} provider identity`);
   }
   const version = validateNormalizedProviderVersion(provider, snapshot.version);

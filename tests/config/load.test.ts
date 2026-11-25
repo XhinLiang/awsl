@@ -39,6 +39,36 @@ describe("loadConfig", () => {
         cli: { providers: { claude: { sandbox_mode: "read-only" } } },
       }),
     ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+
+    const agyLoaded = await loadConfig({
+      cwd: process.cwd(),
+      env: { AWSL_AGY_COMMAND: "/opt/bin/agy" },
+      userConfig: {},
+      projectConfig: {},
+      cli: {
+        provider: "agy",
+        providers: { agy: { permission_mode: "auto" } },
+      },
+    });
+    expect(agyLoaded.value.provider).toBe("agy");
+    expect(agyLoaded.value.providers.agy.executable).toBe("/opt/bin/agy");
+    expect(agyLoaded.value.providers.agy.permissionMode).toBe("auto");
+    await expect(
+      loadConfig({
+        cwd: process.cwd(),
+        userConfig: {},
+        projectConfig: {},
+        cli: { providers: { agy: { sandbox_mode: "read-only" } } },
+      }),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
+    await expect(
+      loadConfig({
+        cwd: process.cwd(),
+        userConfig: {},
+        projectConfig: {},
+        cli: { providers: { codex: { permission_mode: "auto" } } },
+      }),
+    ).rejects.toMatchObject({ code: "CONFIG_ERROR" });
   });
 
   test("validates each layer, performs leaf merge, and tracks RFC6901 provenance", async () => {

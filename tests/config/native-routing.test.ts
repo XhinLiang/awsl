@@ -37,7 +37,7 @@ afterEach(async () => {
 });
 
 async function fixture(
-  provider: "codex" | "claude" = "codex",
+  provider: "codex" | "claude" | "agy" = "codex",
 ): Promise<NativeFixture> {
   const root = await mkdtemp(join(tmpdir(), "awsl-native-routing-"));
   cleanup.push(root);
@@ -53,7 +53,12 @@ async function fixture(
     homeDir,
     input: {
       provider,
-      providerVersion: provider === "codex" ? "0.145.0" : "2.1.218",
+      providerVersion:
+        provider === "codex"
+          ? "0.145.0"
+          : provider === "claude"
+            ? "2.1.218"
+            : "1.5.16",
       canonicalCwd: cwd,
       homeDir,
       env: {},
@@ -784,5 +789,32 @@ describe("native routing source safety", () => {
     expect(String(failure)).not.toContain(canary);
     expect(JSON.stringify(failure)).not.toContain(canary);
     expect((failure as Error).stack).not.toContain(canary);
+  });
+
+  test("projects agy settings including empty default strings and rejects profiles", async () => {
+    const value = await fixture("agy");
+    const baseline = await nativeRoutingFingerprint(value.input);
+    const settingsPath = join(
+      value.homeDir,
+      ".gemini",
+      "antigravity-cli",
+      "settings.json",
+    );
+    await writeNative(
+      settingsPath,
+      JSON.stringify({
+        agentMode: "",
+        enableTerminalSandbox: true,
+        model: "",
+        modelProvider: "gemini",
+        toolPermission: "proceed-in-sandbox",
+      }),
+    );
+    const withSettings = await nativeRoutingFingerprint(value.input);
+    expect(withSettings).not.toBe(baseline);
+
+    await expect(
+      nativeRoutingFingerprint({ ...value.input, profile: "not-allowed" }),
+    ).rejects.toSatisfy(expectConfigError);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import {
   awslBehaviorFingerprint,
   modelMapFingerprint,
@@ -43,6 +44,18 @@ function config(): ResolvedAwslConfig {
           strong: { model: "opus", effort: "high" },
         },
       },
+      agy: {
+        id: "agy",
+        executable: DEFAULT_CONFIG.providers.agy.executable,
+        args: [...DEFAULT_CONFIG.providers.agy.args],
+        nativeModels: [...DEFAULT_CONFIG.providers.agy.nativeModels],
+        models: {},
+        tiers: {
+          fast: { ...DEFAULT_CONFIG.providers.agy.tiers.fast },
+          balanced: { ...DEFAULT_CONFIG.providers.agy.tiers.balanced },
+          strong: { ...DEFAULT_CONFIG.providers.agy.tiers.strong },
+        },
+      },
     },
     registry: {
       pluginDirs: ["./plugins/configured"],
@@ -78,6 +91,15 @@ describe("awsl behavior fingerprint", () => {
     const restricted = config();
     restricted.providers.codex.sandboxMode = "read-only";
     expect(behavior(restricted)).not.toBe(behavior(allowed));
+
+    const agySelected = config();
+    agySelected.provider = "agy";
+    expect(behavior(agySelected)).not.toBe(behavior(ordinary));
+
+    const agyPermission = config();
+    agyPermission.provider = "agy";
+    agyPermission.providers.agy.permissionMode = "bypassPermissions";
+    expect(behavior(agyPermission)).not.toBe(behavior(agySelected));
   });
 
   test("is a deterministic lowercase SHA-256 independent of object insertion order", () => {

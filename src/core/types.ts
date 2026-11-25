@@ -45,7 +45,7 @@ export const TOOL_USE_LIMITS = Object.freeze({
   maxFieldBytes: 240,
 });
 
-export type ProviderId = "codex" | "claude";
+export type ProviderId = "codex" | "claude" | "agy";
 
 export interface ProviderCapabilities {
   systemPrompt: "replace" | "append" | "prompt-prefix" | false;

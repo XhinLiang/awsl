@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, DEFAULT_PATHS } from "./defaults.js";
 import { safeDiagnosticValue } from "./diagnostics.js";
 import {
   isNativeModel,
+  validateAgyPermissionMode,
   validateCodexProfile,
   validateProviderArgs,
 } from "./model-map.js";
@@ -265,14 +266,24 @@ function validateProvider(
           "profile",
           "sandbox_mode",
         ]
-      : [
-          "executable",
-          "args",
-          "default_model",
-          "native_models",
-          "tiers",
-          "models",
-        ],
+      : provider === "agy"
+        ? [
+            "executable",
+            "args",
+            "default_model",
+            "native_models",
+            "tiers",
+            "models",
+            "permission_mode",
+          ]
+        : [
+            "executable",
+            "args",
+            "default_model",
+            "native_models",
+            "tiers",
+            "models",
+          ],
   );
   for (const key of ["executable", "default_model", "profile"] as const)
     if (key in input) string(layer, source, pointer(path, key), input[key]);
@@ -289,6 +300,19 @@ function validateProvider(
       "read-only, workspace-write, or danger-full-access",
       input.sandbox_mode,
     );
+  if ("permission_mode" in input) {
+    try {
+      validateAgyPermissionMode(input.permission_mode);
+    } catch {
+      failure(
+        layer,
+        source,
+        pointer(path, "permission_mode"),
+        "accept-edits, acceptEdits, auto, bypassPermissions, or plan",
+        input.permission_mode,
+      );
+    }
+  }
   if ("executable" in input && !isExecutable(input.executable as string))
     failure(
       layer,
@@ -404,9 +428,16 @@ function validateLayer(
   if (
     "provider" in input &&
     input.provider !== "codex" &&
-    input.provider !== "claude"
+    input.provider !== "claude" &&
+    input.provider !== "agy"
   )
-    failure(layer, source, "/provider", "codex or claude", input.provider);
+    failure(
+      layer,
+      source,
+      "/provider",
+      "codex, claude, or agy",
+      input.provider,
+    );
   if ("state_dir" in input)
     string(layer, source, "/state_dir", input.state_dir);
   if (
@@ -422,8 +453,12 @@ function validateLayer(
     );
   if ("providers" in input) {
     const providers = record(layer, source, "/providers", input.providers);
-    checkKeys(layer, source, "/providers", providers, ["codex", "claude"]);
-    for (const id of ["codex", "claude"] as const)
+    checkKeys(layer, source, "/providers", providers, [
+      "codex",
+      "claude",
+      "agy",
+    ]);
+    for (const id of ["codex", "claude", "agy"] as const)
       if (id in providers)
         validateProvider(
           layer,
@@ -519,6 +554,7 @@ function snapshotEnvironment(
     "AWSL_RAW_PROVIDER_EVENTS",
     "AWSL_CODEX_COMMAND",
     "AWSL_CLAUDE_COMMAND",
+    "AWSL_AGY_COMMAND",
   ]) {
     let descriptor: PropertyDescriptor | undefined;
     try {
@@ -560,6 +596,8 @@ function envLayer(env: Record<string, string | undefined>): ConfigInput {
     providers.codex = { executable: env.AWSL_CODEX_COMMAND };
   if (has("AWSL_CLAUDE_COMMAND"))
     providers.claude = { executable: env.AWSL_CLAUDE_COMMAND };
+  if (has("AWSL_AGY_COMMAND"))
+    providers.agy = { executable: env.AWSL_AGY_COMMAND };
   if (Object.keys(providers).length) out.providers = providers;
   return out;
 }
@@ -635,7 +673,7 @@ export async function loadConfig(
     state_dir: DEFAULT_CONFIG.stateDir,
     raw_provider_events: DEFAULT_CONFIG.rawProviderEvents,
     providers: Object.fromEntries(
-      (["codex", "claude"] as const).map((id) => {
+      (["codex", "claude", "agy"] as const).map((id) => {
         const item = DEFAULT_CONFIG.providers[id];
         return [
           id,
@@ -675,15 +713,19 @@ export async function loadConfig(
   const normal = normalize(
     merged as Record<string, unknown>,
   ) as unknown as ResolvedAwslConfig;
-  if (!normal.providers?.codex || !normal.providers?.claude)
+  if (
+    !normal.providers?.codex ||
+    !normal.providers?.claude ||
+    !normal.providers?.agy
+  )
     failure(
       "defaults",
       "built-in",
       "/providers",
-      "both providers",
+      "all providers",
       normal.providers,
     );
-  for (const id of ["codex", "claude"] as const) {
+  for (const id of ["codex", "claude", "agy"] as const) {
     const provider = normal.providers[id];
     if (provider.id !== id) (provider as { id: ProviderId }).id = id;
     provenance[`/providers/${id}/id`] = {

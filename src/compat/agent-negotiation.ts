@@ -199,7 +199,7 @@ export function negotiateAgent(
   provider: ProviderId,
   capabilities: ProviderCapabilities,
 ): ResolvedAgentSelection {
-  if (provider !== "codex" && provider !== "claude")
+  if (provider !== "codex" && provider !== "claude" && provider !== "agy")
     throw new AwslError(
       "COMPATIBILITY_ERROR",
       "agent provider is unsupported",
@@ -209,7 +209,7 @@ export function negotiateAgent(
   const supported = snapshotCapabilities(capabilities, provider);
   if (supported.skills !== false)
     return fail(provider, "provider skill capability is invalid");
-  const expectedPrompt = provider === "codex" ? "prompt-prefix" : "replace";
+  const expectedPrompt = provider === "claude" ? "replace" : "prompt-prefix";
   if (supported.systemPrompt !== expectedPrompt)
     return fail(provider, "provider cannot preserve agent instructions");
 
@@ -261,8 +261,12 @@ export function negotiateAgent(
       >;
     }
   } else {
+    const providerLabel = provider === "claude" ? "Claude" : "agy";
     if (Object.hasOwn(raw, "sandboxMode"))
-      return fail(provider, "Claude cannot preserve a Codex sandbox mode");
+      return fail(
+        provider,
+        `${providerLabel} cannot preserve a Codex sandbox mode`,
+      );
     const toolCapabilities = snapshotRecord(
       supported.tools,
       provider,
@@ -279,17 +283,26 @@ export function negotiateAgent(
         (tools.length === 0 && toolCapabilities.denyAll !== true) ||
         (tools.length > 0 && toolCapabilities.allowlist !== true)
       )
-        return fail(provider, "Claude cannot preserve the tool policy");
+        return fail(
+          provider,
+          `${providerLabel} cannot preserve the tool policy`,
+        );
       policy.tools = tools;
     }
     if (Object.hasOwn(raw, "disallowedTools")) {
       if (toolCapabilities.denylist !== true)
-        return fail(provider, "Claude cannot preserve the tool policy");
+        return fail(
+          provider,
+          `${providerLabel} cannot preserve the tool policy`,
+        );
       policy.disallowedTools = raw.disallowedTools as readonly string[];
     }
     if (Object.hasOwn(raw, "mcp")) {
       if (mcpCapabilities.strictReplacement !== true)
-        return fail(provider, "Claude cannot preserve the MCP policy");
+        return fail(
+          provider,
+          `${providerLabel} cannot preserve the MCP policy`,
+        );
       policy.mcp = raw.mcp as Readonly<Record<string, JsonValue>>;
     }
     if (Object.hasOwn(raw, "permissionMode")) {
@@ -298,7 +311,10 @@ export function negotiateAgent(
         !Array.isArray(modes) ||
         !modes.includes(raw.permissionMode as string)
       )
-        return fail(provider, "Claude cannot preserve the permission mode");
+        return fail(
+          provider,
+          `${providerLabel} cannot preserve the permission mode`,
+        );
       policy.permissionMode = raw.permissionMode as string;
     }
   }

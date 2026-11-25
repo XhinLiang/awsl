@@ -3,7 +3,12 @@ import { isProxy } from "node:util/types";
 import { AwslError } from "../core/errors.js";
 import { strictJsonClone } from "../core/strict-json.js";
 import type { AgentEffort, ProviderId } from "../core/types.js";
-import type { ModelResolutionInput, ResolvedModel, TierName } from "./types.js";
+import type {
+  AgyPermissionMode,
+  ModelResolutionInput,
+  ResolvedModel,
+  TierName,
+} from "./types.js";
 
 export const BUILTIN_MODEL_ALIASES: Readonly<Record<string, TierName>> =
   Object.freeze({
@@ -25,16 +30,28 @@ export function isNativeModel(
   configured: readonly string[] = [],
 ): boolean {
   if (configured.includes(model)) return true;
-  return provider === "claude"
-    ? model === "haiku" ||
-        model === "sonnet" ||
-        model === "opus" ||
-        model.startsWith("claude-")
-    : model === "gpt-5.6-terra" ||
-        model === "gpt-5.6-sol" ||
-        model.startsWith("gpt-") ||
-        model.startsWith("codex-") ||
-        /^o[1-9](?:-|$)/.test(model);
+  if (provider === "claude") {
+    return (
+      model === "haiku" ||
+      model === "sonnet" ||
+      model === "opus" ||
+      model.startsWith("claude-")
+    );
+  }
+  if (provider === "agy") {
+    return (
+      model.startsWith("gemini-") ||
+      model.startsWith("claude-") ||
+      model.startsWith("gpt-oss-")
+    );
+  }
+  return (
+    model === "gpt-5.6-terra" ||
+    model === "gpt-5.6-sol" ||
+    model.startsWith("gpt-") ||
+    model.startsWith("codex-") ||
+    /^o[1-9](?:-|$)/.test(model)
+  );
 }
 function fail(message: string): never {
   throw new AwslError("CONFIG_ERROR", message, { recoverable: false });
@@ -111,7 +128,7 @@ export function validateProviderArgs(
   provider: ProviderId,
   args: readonly string[],
 ): readonly string[] {
-  if (provider !== "codex" && provider !== "claude")
+  if (provider !== "codex" && provider !== "claude" && provider !== "agy")
     fail("unknown provider argument grammar");
   let copy: string[];
   try {
@@ -141,11 +158,13 @@ export function validateProviderArgs(
   const allowed =
     provider === "codex"
       ? new Set(["--search", "--strict-config", "--no-alt-screen"])
-      : new Set([
-          "--disable-slash-commands",
-          "--exclude-dynamic-system-prompt-sections",
-          "--safe-mode",
-        ]);
+      : provider === "claude"
+        ? new Set([
+            "--disable-slash-commands",
+            "--exclude-dynamic-system-prompt-sections",
+            "--safe-mode",
+          ])
+        : new Set(["--disable-slash-commands", "--sandbox"]);
   const seen = new Set<string>();
   for (const arg of copy) {
     const setting =
@@ -166,6 +185,23 @@ export function validateProviderArgs(
     }
   }
   return Object.freeze(copy);
+}
+
+const AGY_PERMISSION_MODES = new Set<AgyPermissionMode>([
+  "accept-edits",
+  "acceptEdits",
+  "auto",
+  "bypassPermissions",
+  "plan",
+]);
+
+export function validateAgyPermissionMode(value: unknown): AgyPermissionMode {
+  if (
+    typeof value !== "string" ||
+    !AGY_PERMISSION_MODES.has(value as AgyPermissionMode)
+  )
+    fail("invalid agy permission mode");
+  return value as AgyPermissionMode;
 }
 
 export function validateCodexProfile(value: unknown): string {

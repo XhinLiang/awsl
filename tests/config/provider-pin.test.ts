@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import {
   awslBehaviorFingerprint,
   modelMapFingerprint,
@@ -141,6 +142,7 @@ function resolvedConfig(
           strong: { model: "opus", effort: "high" },
         },
       },
+      agy: DEFAULT_CONFIG.providers.agy,
     },
     registry: { pluginDirs: [] },
   };

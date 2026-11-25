@@ -19,6 +19,7 @@ import {
   createRegistry,
 } from "../../src/compat/agent-registry.js";
 import { COMPATIBILITY_PROFILE } from "../../src/compat/profile.js";
+import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import {
   type ProviderPinV1,
   type ProviderPinV2,
@@ -272,6 +273,7 @@ function config(canonicalCwd: string): ResolvedAwslConfig {
         },
         models: {},
       },
+      agy: DEFAULT_CONFIG.providers.agy,
     },
     registry: { pluginDirs: [] },
   };

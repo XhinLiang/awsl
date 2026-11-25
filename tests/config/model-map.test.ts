@@ -13,6 +13,10 @@ describe("resolveModel", () => {
     ["claude", "haiku", "haiku", "low", "native"],
     ["claude", "sonnet", "sonnet", "medium", "native"],
     ["claude", "opus", "opus", "high", "native"],
+    ["agy", "haiku", "gemini-3.8-flash", "low", "tier:fast"],
+    ["agy", "sonnet", "gemini-4-carbon", "medium", "tier:balanced"],
+    ["agy", "opus", "gemini-4-carbon", "high", "tier:strong"],
+    ["agy", "gemini-4-neon-high", "gemini-4-neon-high", undefined, "native"],
   ] as const)(
     "freezes defaults for %s/%s",
     (provider, requested, model, effort, modelSource) => {
@@ -290,6 +294,7 @@ describe("resolveModel", () => {
   test.each([
     ["codex", { agentModel: "claude-private" }],
     ["claude", { agentModel: "gpt-private" }],
+    ["agy", { agentModel: "gpt-5.6-sol" }],
     [
       "codex",
       { callOptionsModel: "claude-private", agentModel: "gpt-5.6-sol" },

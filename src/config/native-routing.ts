@@ -84,6 +84,12 @@ const CLAUDE_ENVIRONMENT = Object.freeze([
   "ANTHROPIC_VERTEX_PROJECT_ID",
 ] as const);
 
+const AGY_ENVIRONMENT = Object.freeze([
+  "GEMINI_MODEL",
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_CLOUD_LOCATION",
+] as const);
+
 const CODEX_FIELDS = Object.freeze([
   "model",
   "model_provider",
@@ -299,7 +305,7 @@ async function canonicalDirectory(
 
 function locatorRoot(
   environment: Record<string, unknown>,
-  name: "CODEX_HOME" | "CLAUDE_CONFIG_DIR",
+  name: "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | "AGY_CONFIG_DIR",
   fallback: string,
   cwd: string,
 ): string {
@@ -318,7 +324,12 @@ function projectedEnvironment(
   environment: Record<string, unknown>,
   provider: ProviderId,
 ): readonly FieldMarker[] {
-  const names = provider === "codex" ? CODEX_ENVIRONMENT : CLAUDE_ENVIRONMENT;
+  const names =
+    provider === "codex"
+      ? CODEX_ENVIRONMENT
+      : provider === "claude"
+        ? CLAUDE_ENVIRONMENT
+        : AGY_ENVIRONMENT;
   return names.map((name) => {
     const value = environmentValue(environment, name);
     if (value === undefined) return [name, "missing", null] as const;
@@ -465,6 +476,73 @@ async function claudeLayer(
   ];
 }
 
+function possiblyEmptyStringMarker(
+  object: Record<string, unknown>,
+  name: string,
+): FieldMarker {
+  const field = ownData(object, name);
+  if (!field.present) return [name, "missing", null];
+  if (
+    typeof field.value !== "string" ||
+    field.value.includes("\0") ||
+    !isUnicodeScalarString(field.value)
+  )
+    invalidData();
+  return [name, "present", field.value];
+}
+
+function agyProjection(value: unknown): readonly FieldMarker[] {
+  const input = projectionRecord(value);
+  return [
+    possiblyEmptyStringMarker(input, "model"),
+    possiblyEmptyStringMarker(input, "modelProvider"),
+    possiblyEmptyStringMarker(input, "agentMode"),
+    possiblyEmptyStringMarker(input, "toolPermission"),
+    booleanMarker(input, "enableTerminalSandbox"),
+  ];
+}
+
+async function agyLayer(
+  tag: string,
+  requestedPath: string,
+  cwd: string,
+): Promise<LayerProjection> {
+  let snapshot: Awaited<ReturnType<typeof readRegularUtf8Text>>;
+  try {
+    snapshot = await readRegularUtf8Text(requestedPath, cwd);
+  } catch (error) {
+    if (isMissingSourceError(error))
+      return ["layer", tag, requestedPath, "missing", null, null];
+    configError(
+      `cannot read agy native settings at ${JSON.stringify(requestedPath)}`,
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = parseUniqueJson(snapshot.source);
+  } catch {
+    configError(
+      `invalid agy native settings syntax at ${JSON.stringify(requestedPath)}`,
+    );
+  }
+  let projection: readonly FieldMarker[];
+  try {
+    projection = agyProjection(parsed);
+  } catch {
+    configError(
+      `invalid agy native settings schema at ${JSON.stringify(requestedPath)}`,
+    );
+  }
+  return [
+    "layer",
+    tag,
+    requestedPath,
+    "present",
+    snapshot.realpath,
+    projection,
+  ];
+}
+
 function digest(preimage: unknown): Sha256Digest {
   try {
     return `sha256:${createHash("sha256")
@@ -480,7 +558,7 @@ export async function nativeRoutingFingerprint(
 ): Promise<Sha256Digest> {
   const input = captureInput(value);
   const provider = input.provider;
-  if (provider !== "codex" && provider !== "claude")
+  if (provider !== "codex" && provider !== "claude" && provider !== "agy")
     configError("native routing provider is invalid");
   const providerVersion = validateNormalizedProviderVersion(
     provider,
@@ -495,7 +573,7 @@ export async function nativeRoutingFingerprint(
     if (Object.hasOwn(input, "profile"))
       profile = validateCodexProfile(input.profile);
   } else if (Object.hasOwn(input, "profile")) {
-    configError("Claude native routing does not accept a profile");
+    configError(`${provider} native routing does not accept a profile`);
   }
 
   const environment = environmentObject(input.env);
@@ -544,6 +622,30 @@ export async function nativeRoutingFingerprint(
       ["environment", `${namespace}/env/v1`, environmentProjection],
       ["safe-args", `${namespace}/args/v1`, safeArgs],
       ["profile", `${namespace}/profile/v1`, profile ?? null],
+    ]);
+  }
+
+  if (provider === "agy") {
+    const namespace = `agy-cli@${providerVersion}`;
+    const agyHome = locatorRoot(
+      environment,
+      "AGY_CONFIG_DIR",
+      join(homeDir, ".gemini", "antigravity-cli"),
+      cwd,
+    );
+    const layers: LayerProjection[] = [
+      await agyLayer(
+        `${namespace}/settings:user/v1`,
+        lexicalPath(join(agyHome, "settings.json"), cwd),
+        cwd,
+      ),
+    ];
+    return digest([
+      "awsl-native-routing:v1",
+      ["provider", provider, providerVersion],
+      ...layers,
+      ["environment", `${namespace}/env/v1`, environmentProjection],
+      ["safe-args", `${namespace}/args/v1`, safeArgs],
     ]);
   }
 

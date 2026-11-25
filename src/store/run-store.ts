@@ -1023,7 +1023,7 @@ export class FileRunStore {
     provider: ProviderId,
   ): undefined | ((event: unknown) => Promise<void>) {
     if (!this.#rawCapture) return undefined;
-    if (provider !== "codex" && provider !== "claude")
+    if (provider !== "codex" && provider !== "claude" && provider !== "agy")
       throw fail("invalid raw provider");
     return async (event) =>
       this.#releaseStarted
