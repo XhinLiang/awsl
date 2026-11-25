@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-24
+
 ### Added
 
 - Add native Antigravity CLI (`agy`) provider compatibility (`--provider agy`,
