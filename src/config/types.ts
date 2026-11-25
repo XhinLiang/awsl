@@ -16,6 +16,13 @@ interface BaseProviderConfig {
   tiers: Readonly<Record<TierName, ModelTarget>>;
   models: Readonly<Record<string, ModelTarget>>;
 }
+export type AgyPermissionMode =
+  | "accept-edits"
+  | "acceptEdits"
+  | "auto"
+  | "bypassPermissions"
+  | "plan";
+
 export interface CodexProviderConfig extends BaseProviderConfig {
   id: "codex";
   profile?: string;
@@ -25,7 +32,15 @@ export interface ClaudeProviderConfig extends BaseProviderConfig {
   id: "claude";
   profile?: never;
 }
-export type ProviderConfig = CodexProviderConfig | ClaudeProviderConfig;
+export interface AgyProviderConfig extends BaseProviderConfig {
+  id: "agy";
+  profile?: never;
+  permissionMode?: AgyPermissionMode;
+}
+export type ProviderConfig =
+  | CodexProviderConfig
+  | ClaudeProviderConfig
+  | AgyProviderConfig;
 export interface ResolvedAwslConfig {
   provider: ProviderId;
   stateDir: string;
@@ -33,6 +48,7 @@ export interface ResolvedAwslConfig {
   providers: {
     readonly codex: CodexProviderConfig;
     readonly claude: ClaudeProviderConfig;
+    readonly agy: AgyProviderConfig;
   };
   registry: { pluginDirs: readonly string[] };
 }

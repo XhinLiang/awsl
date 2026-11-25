@@ -6,6 +6,7 @@ import type {
   ProviderCapabilities,
   ResolvedAgentSelection,
 } from "../../src/core/types.js";
+import { AGY_CAPABILITIES } from "../../src/providers/agy.js";
 import { CLAUDE_CAPABILITIES } from "../../src/providers/claude.js";
 import { CODEX_CAPABILITIES } from "../../src/providers/codex.js";
 
@@ -143,6 +144,34 @@ describe("agent policy negotiation", () => {
         provider: "claude",
       }),
     );
+
+    expect(
+      negotiateAgent(
+        raw({ permissionMode: "bypassPermissions" }),
+        "agy",
+        AGY_CAPABILITIES,
+      ).policy,
+    ).toEqual({
+      instructions: "Review the requested change.",
+      name: "reviewer",
+      permissionMode: "bypassPermissions",
+    });
+    for (const unsupported of [
+      { sandboxMode: "read-only" as const },
+      { tools: ["Read"] },
+      { disallowedTools: ["Bash"] },
+      { mcp: {} },
+      { permissionMode: "manual" },
+    ]) {
+      expect(() =>
+        negotiateAgent(raw(unsupported), "agy", AGY_CAPABILITIES),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "COMPATIBILITY_ERROR",
+          provider: "agy",
+        }),
+      );
+    }
   });
 
   test.each(["unrestricted", "dangerously-skip-permissions"])(

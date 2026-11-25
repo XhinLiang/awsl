@@ -14,11 +14,13 @@ import { DEFAULT_CONFIG } from "./defaults.js";
 import {
   BUILTIN_MODEL_ALIASES,
   isNativeModel,
+  validateAgyPermissionMode,
   validateCodexProfile,
   validateProviderArgs,
 } from "./model-map.js";
 import { lexicalPath } from "./paths.js";
 import type {
+  AgyProviderConfig,
   ClaudeProviderConfig,
   CodexProviderConfig,
   ModelTarget,
@@ -169,6 +171,7 @@ function modelTargets(
 
 function providerConfig(value: unknown, id: "codex"): CodexProviderConfig;
 function providerConfig(value: unknown, id: "claude"): ClaudeProviderConfig;
+function providerConfig(value: unknown, id: "agy"): AgyProviderConfig;
 function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
   const label = `${id} resolved provider config`;
   const input = record(value, label);
@@ -177,7 +180,9 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
     BASE_PROVIDER_KEYS,
     id === "codex"
       ? ["defaultModel", "profile", "sandboxMode"]
-      : ["defaultModel"],
+      : id === "agy"
+        ? ["defaultModel", "permissionMode"]
+        : ["defaultModel"],
     label,
   );
   if (input.id !== id) configError(`${label} id is invalid`);
@@ -236,6 +241,26 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
       ...(sandboxMode === undefined ? {} : { sandboxMode }),
     });
   }
+  if (id === "agy") {
+    let permissionMode: AgyProviderConfig["permissionMode"];
+    if (Object.hasOwn(input, "permissionMode")) {
+      try {
+        permissionMode = validateAgyPermissionMode(input.permissionMode);
+      } catch {
+        configError(`${label} permissionMode is invalid`);
+      }
+    }
+    return Object.freeze({
+      id,
+      executable,
+      args,
+      nativeModels,
+      tiers: resolvedTiers,
+      models,
+      ...(defaultModel === undefined ? {} : { defaultModel }),
+      ...(permissionMode === undefined ? {} : { permissionMode }),
+    });
+  }
   return Object.freeze({
     id,
     executable,
@@ -247,18 +272,41 @@ function providerConfig(value: unknown, id: ProviderId): ProviderConfig {
   });
 }
 
+function isDefaultAgyConfig(agy: AgyProviderConfig): boolean {
+  const def = DEFAULT_CONFIG.providers.agy;
+  return (
+    agy.executable === def.executable &&
+    agy.args.length === 0 &&
+    agy.defaultModel === undefined &&
+    agy.permissionMode === undefined &&
+    agy.nativeModels.length === 0 &&
+    Object.keys(agy.models).length === 0 &&
+    TIERS.every(
+      (tier) =>
+        agy.tiers[tier].model === def.tiers[tier].model &&
+        agy.tiers[tier].effort === def.tiers[tier].effort,
+    )
+  );
+}
+
 function resolvedConfig(value: unknown): ResolvedAwslConfig {
   const input = record(
     snapshot(value, "resolved awsl config"),
     "resolved awsl config",
   );
   exactKeys(input, TOP_KEYS, [], "resolved awsl config");
-  if (input.provider !== "codex" && input.provider !== "claude")
+  if (
+    input.provider !== "codex" &&
+    input.provider !== "claude" &&
+    input.provider !== "agy"
+  )
     configError("resolved awsl provider is invalid");
   if (typeof input.rawProviderEvents !== "boolean")
     configError("resolved awsl rawProviderEvents is invalid");
   const providers = record(input.providers, "resolved awsl providers");
-  exactKeys(providers, ["codex", "claude"], [], "resolved awsl providers");
+  exactKeys(providers, ["codex", "claude"], ["agy"], "resolved awsl providers");
+  if (input.provider === "agy" && !Object.hasOwn(providers, "agy"))
+    configError("resolved awsl providers has invalid keys");
   const registry = record(input.registry, "resolved awsl registry");
   exactKeys(registry, ["pluginDirs"], [], "resolved awsl registry");
   return Object.freeze({
@@ -268,6 +316,9 @@ function resolvedConfig(value: unknown): ResolvedAwslConfig {
     providers: Object.freeze({
       codex: providerConfig(providers.codex, "codex"),
       claude: providerConfig(providers.claude, "claude"),
+      agy: Object.hasOwn(providers, "agy")
+        ? providerConfig(providers.agy, "agy")
+        : providerConfig(DEFAULT_CONFIG.providers.agy, "agy"),
     }),
     registry: Object.freeze({
       pluginDirs: stringArray(
@@ -335,9 +386,21 @@ export function awslBehaviorFingerprint(
   const builtinHash = `sha256:${createHash("sha256")
     .update(WORKFLOW_SUBAGENT_SOURCE, "utf8")
     .digest("hex")}`;
+  // Preserve exact V1 encoding for untouched Codex/Claude runs so upgrading
+  // awsl does not strand existing durable 0.3.x runs.
+  const configForHash =
+    config.provider !== "agy" && isDefaultAgyConfig(config.providers.agy)
+      ? {
+          ...config,
+          providers: {
+            codex: config.providers.codex,
+            claude: config.providers.claude,
+          },
+        }
+      : config;
   return digest({
     version: 1,
-    config,
+    config: configForHash,
     enabledPluginRoots: roots,
     registryRules: REGISTRY_FINGERPRINT_RULES,
     // Fingerprint V1 shipped with this field and value. Preserve its exact
@@ -365,6 +428,9 @@ export function modelMapFingerprint(
     builtinDefaultTiers: {
       codex: cloneTiers(DEFAULT_CONFIG.providers.codex.tiers),
       claude: cloneTiers(DEFAULT_CONFIG.providers.claude.tiers),
+      ...(config.provider === "agy"
+        ? { agy: cloneTiers(DEFAULT_CONFIG.providers.agy.tiers) }
+        : {}),
     },
   });
 }

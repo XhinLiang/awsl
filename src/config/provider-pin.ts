@@ -583,7 +583,7 @@ function parsePinCommon(
   configured: readonly string[],
 ): ProviderPinCommon {
   const provider = input.provider;
-  if (provider !== "codex" && provider !== "claude")
+  if (provider !== "codex" && provider !== "claude" && provider !== "agy")
     configError("provider pin provider is invalid");
   const parsedCompatibilityProfile = compatibilityProfile(
     input.compatibilityProfile,

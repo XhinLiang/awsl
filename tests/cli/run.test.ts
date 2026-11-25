@@ -26,9 +26,16 @@ const fakeCodex = fileURLToPath(
 const fakeClaude = fileURLToPath(
   new URL("../fixtures/bin/fake-claude.mjs", import.meta.url),
 );
+const fakeAgy = fileURLToPath(
+  new URL("../fixtures/bin/fake-agy.mjs", import.meta.url),
+);
 
 beforeAll(async () => {
-  await Promise.all([chmod(fakeCodex, 0o755), chmod(fakeClaude, 0o755)]);
+  await Promise.all([
+    chmod(fakeCodex, 0o755),
+    chmod(fakeClaude, 0o755),
+    chmod(fakeAgy, 0o755),
+  ]);
 });
 
 function output(format: "pretty" | "json" | "jsonl") {
@@ -543,5 +550,90 @@ describe("CLI workflow execution", () => {
     expect(invocation.argv).not.toContain("claude-opus-foreign");
     expect(await readFile(log, "utf8")).toBe("version\nrun\n");
     expect(process.env.AWSL_FAKE_CODEX_VERSION).toBe(ambientVersion);
+  });
+
+  test("runs and resumes with the agy provider and pins --agy-permission-mode", async () => {
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "awsl-agy-cli-")));
+    const capture = join(cwd, "agy-capture.jsonl");
+    const env = {
+      ...process.env,
+      AWSL_STATE_DIR: join(cwd, "state"),
+      AWSL_AGY_COMMAND: fakeAgy,
+      AWSL_FAKE_AGY_CAPTURE: capture,
+      AGY_CONFIG_DIR: join(cwd, "agy-home"),
+    };
+
+    const doctor = cliContext(cwd, { ...env, AWSL_PROVIDER: "agy" });
+    expect(
+      await executeCli(["doctor", "--format", "json"], doctor.context),
+    ).toBe(0);
+    expect(JSON.parse(doctor.output().stdout)).toMatchObject({
+      status: "ok",
+      selectedProvider: "agy",
+      checks: {
+        agy: {
+          available: true,
+          version: "1.5.16",
+          support: "verified",
+        },
+      },
+    });
+
+    const cli = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          "run",
+          join(workflows, "nested", "basic-agent.js"),
+          "--provider",
+          "agy",
+          "--agy-permission-mode",
+          "bypassPermissions",
+          "--args",
+          '{"prompt":"hello-agy"}',
+          "--format",
+          "json",
+        ],
+        cli.context,
+      ),
+    ).toBe(0);
+
+    const parsedRun = JSON.parse(cli.output().stdout);
+    expect(parsedRun.status).toBe("completed");
+    expect(parsedRun.result).toMatchObject({
+      answer: expect.stringContaining("hello-agy"),
+    });
+    const invocation = JSON.parse((await readFile(capture, "utf8")).trim());
+    expect(invocation.argv).toContain("--dangerously-skip-permissions");
+
+    const drift = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          "resume",
+          parsedRun.runId,
+          "--agy-permission-mode",
+          "auto",
+          "--format",
+          "json",
+        ],
+        drift.context,
+      ),
+    ).not.toBe(0);
+
+    const matchingResume = cliContext(cwd, env);
+    expect(
+      await executeCli(
+        [
+          "resume",
+          parsedRun.runId,
+          "--agy-permission-mode",
+          "bypassPermissions",
+          "--format",
+          "json",
+        ],
+        matchingResume.context,
+      ),
+    ).toBe(0);
   });
 });

@@ -23,11 +23,16 @@ const CLAUDE_VERSION_BANNER = new RegExp(
   `^(${SEMVER_CORE}) \\(Claude Code\\)$`,
   "u",
 );
+const AGY_VERSION_BANNER = new RegExp(
+  `^(?:agy )?(${SEMVER_CORE})(?: \\(Antigravity(?: CLI)?\\))?$`,
+  "u",
+);
 const VERIFIED_PROVIDER_VERSIONS: Readonly<
   Record<ProviderId, ReadonlySet<string>>
 > = Object.freeze({
   codex: new Set(["0.145.0", "0.146.0"]),
   claude: new Set(["2.1.218"]),
+  agy: new Set(["1.5.16"]),
 });
 
 export type ProviderVersionSupport = "verified" | "unverified";
@@ -313,7 +318,7 @@ export function validateNormalizedProviderVersion(
   value: unknown,
 ): string {
   if (
-    (provider === "codex" || provider === "claude") &&
+    (provider === "codex" || provider === "claude" || provider === "agy") &&
     typeof value === "string" &&
     NORMALIZED_PROVIDER_VERSION.test(value)
   )
@@ -338,7 +343,11 @@ export function normalizeProviderVersionBanner(
   const match =
     provider === "codex"
       ? CODEX_VERSION_BANNER.exec(value)
-      : CLAUDE_VERSION_BANNER.exec(value);
+      : provider === "claude"
+        ? CLAUDE_VERSION_BANNER.exec(value)
+        : provider === "agy"
+          ? AGY_VERSION_BANNER.exec(value)
+          : null;
   if (match?.[1] !== undefined)
     return validateNormalizedProviderVersion(provider, match[1]);
   return compatibilityError(provider, "provider version is incompatible");
@@ -349,7 +358,7 @@ export async function resolveProviderIdentity(
 ): Promise<ProviderIdentity> {
   const captured = snapshotOptions(options);
   const provider = captured.provider;
-  if (provider !== "codex" && provider !== "claude")
+  if (provider !== "codex" && provider !== "claude" && provider !== "agy")
     configError("provider identity provider is invalid");
   const executable = captured.executable;
   const kind = executableKind(executable);

@@ -25,6 +25,7 @@ export type ResolvedArgsInput =
 
 export interface ParsedResume {
   readonly codexSandbox?: string;
+  readonly agyPermissionMode?: string;
   readonly runId: string;
   readonly argsPresent: boolean;
   readonly args?: unknown;
@@ -103,6 +104,7 @@ export function parseResume(argv: readonly string[]): ParsedResume {
   let budget: number | undefined;
   let format: OutputFormat | undefined;
   let codexSandbox: string | undefined;
+  let agyPermissionMode: string | undefined;
   const seen = new Set<string>();
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index] as string;
@@ -121,6 +123,7 @@ export function parseResume(argv: readonly string[]): ParsedResume {
         "--budget",
         "--format",
         "--codex-sandbox",
+        "--agy-permission-mode",
       ].includes(option)
     )
       usage("unknown resume option");
@@ -139,6 +142,18 @@ export function parseResume(argv: readonly string[]): ParsedResume {
       )
         usage("invalid Codex sandbox mode");
       codexSandbox = value;
+    } else if (option === "--agy-permission-mode") {
+      if (
+        ![
+          "accept-edits",
+          "acceptEdits",
+          "auto",
+          "bypassPermissions",
+          "plan",
+        ].includes(value)
+      )
+        usage("invalid agy permission mode");
+      agyPermissionMode = value;
     } else format = parseOutputFormat(value);
   }
   if (argsText !== undefined && argsFile !== undefined)
@@ -151,6 +166,7 @@ export function parseResume(argv: readonly string[]): ParsedResume {
     ...(budget === undefined ? {} : { budget }),
     ...(format === undefined ? {} : { format }),
     ...(codexSandbox === undefined ? {} : { codexSandbox }),
+    ...(agyPermissionMode === undefined ? {} : { agyPermissionMode }),
   });
 }
 

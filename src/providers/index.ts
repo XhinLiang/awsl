@@ -39,3 +39,9 @@ export {
   ClaudeAdapter,
   buildClaudeArgv,
 } from "./claude.js";
+export {
+  AGY_CAPABILITIES,
+  AGY_PERMISSION_MODES,
+  AgyAdapter,
+  buildAgyArgv,
+} from "./agy.js";

@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import { expect, test } from "vitest";
 
 import { createRegistry } from "../../src/compat/agent-registry.js";
+import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import {
   type ProviderPinV2,
   parseProviderPinV2,
@@ -268,6 +269,7 @@ function config(stateDir: string): ResolvedAwslConfig {
         },
         models: {},
       },
+      agy: DEFAULT_CONFIG.providers.agy,
     },
     registry: { pluginDirs: [] },
   };

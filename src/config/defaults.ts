@@ -76,6 +76,18 @@ export const DEFAULT_CONFIG: ResolvedAwslConfig = Object.freeze({
         strong: Object.freeze({ model: "opus", effort: "high" }),
       }),
     }),
+    agy: Object.freeze({
+      id: "agy",
+      executable: "agy",
+      args: Object.freeze([]),
+      nativeModels: Object.freeze([]),
+      models: Object.freeze({}),
+      tiers: Object.freeze({
+        fast: Object.freeze({ model: "gemini-3.8-flash", effort: "low" }),
+        balanced: Object.freeze({ model: "gemini-4-carbon", effort: "medium" }),
+        strong: Object.freeze({ model: "gemini-4-carbon", effort: "high" }),
+      }),
+    }),
   }),
   registry: Object.freeze({ pluginDirs: Object.freeze([]) }),
 });

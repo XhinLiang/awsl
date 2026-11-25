@@ -631,9 +631,29 @@ describe("provider identity resolution", () => {
     for (const version of ["0.144.0", "0.147.0", "9.9.9"])
       expect(validateNormalizedProviderVersion("codex", version)).toBe(version);
     expect(validateNormalizedProviderVersion("claude", "9.9.9")).toBe("9.9.9");
+    expect(validateNormalizedProviderVersion("agy", "9.9.9")).toBe("9.9.9");
     expect(providerVersionSupport("codex", "0.146.0")).toBe("verified");
     expect(providerVersionSupport("claude", "2.1.218")).toBe("verified");
     expect(providerVersionSupport("claude", "2.1.221")).toBe("unverified");
+    expect(providerVersionSupport("agy", "1.5.16")).toBe("verified");
+    expect(providerVersionSupport("agy", "1.6.0")).toBe("unverified");
+
+    const agyBin = await executable(cwd, "agy");
+    for (const banner of [
+      "1.5.16\n",
+      "agy 1.5.16\n",
+      "1.5.16 (Antigravity CLI)\n",
+    ]) {
+      await expect(
+        resolveProviderIdentity({
+          provider: "agy",
+          executable: agyBin,
+          cwd,
+          env: {},
+          probe: probe(banner),
+        }),
+      ).resolves.toMatchObject({ id: "agy", version: "1.5.16" });
+    }
   });
 
   test("applies the first-version-line byte and control rules before banner matching", async () => {
